@@ -266,5 +266,6 @@ func agentReply(e Entry) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("jot #%d: %w (%s)", e.ID, err, meta.TranscriptPath)
 	}
-	return truncateReply(reply), nil
+	// Cleaned before the cut, so the cut can't split an escape sequence.
+	return truncateReply(cleanText(reply)), nil
 }

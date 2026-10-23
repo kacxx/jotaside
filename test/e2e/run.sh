@@ -91,20 +91,26 @@ else
   bad "could not parse a jot id from inbox"
 fi
 
-hr "4b. promote --dry-run (no gh call, no change)"
+hr "4b. promote --dry-run (only gh repo view, no change)"
 "$BIN" add "e2e promote me" >/dev/null
 PID="$("$BIN" inbox | grep "e2e promote me" | grep -oE '#[0-9]+' | head -1 | tr -d '#')"
-DRY="$("$BIN" promote "$PID" --repo o/n --dry-run 2>&1)"; echo "$DRY" | sed 's/^/  /'
+# A stub gh that succeeds silently, so a regression can't create a real issue.
+# It prints no visibility, so promote treats the repo as possibly public.
+mkdir -p "$TMP/stubbin"; printf '#!/bin/sh\nexit 0\n' >"$TMP/stubbin/gh"; chmod +x "$TMP/stubbin/gh"
+DRY="$(PATH="$TMP/stubbin:$PATH" "$BIN" promote "$PID" --repo o/n --dry-run 2>&1)"; echo "$DRY" | sed 's/^/  /'
 echo "$DRY" | grep -q "^repo:  o/n" && echo "$DRY" | grep -q "^title: e2e promote me" \
   && ok "promote --dry-run prints repo and title" || bad "promote --dry-run output"
+echo "$DRY" | grep -q "couldn't check whether o/n is public" \
+  && ok "promote --dry-run warns when it can't check the repo's visibility" || bad "promote --dry-run visibility warning"
 "$BIN" show "$PID" | grep -q "(inbox)" && ok "dry run leaves the jot in the inbox" || bad "dry run changed the jot"
 "$BIN" promote 999999 --repo o/n --dry-run >/dev/null 2>&1 && bad "promote of an unknown id exited 0" \
   || ok "promote of an unknown id exits non-zero"
-# A stub gh that succeeds silently, so a regression can't create a real issue.
-mkdir -p "$TMP/stubbin"; printf '#!/bin/sh\nexit 0\n' >"$TMP/stubbin/gh"; chmod +x "$TMP/stubbin/gh"
 REFUSED="$(printf 'y\n' | PATH="$TMP/stubbin:$PATH" "$BIN" promote "$PID" --repo o/n 2>&1)" && bad "promote with piped input and no --yes exited 0" \
   || { echo "$REFUSED" | grep -q "not a terminal" && ok "promote refuses to ask without a terminal" \
   || bad "promote failed, but not with the terminal refusal: $REFUSED"; }
+REFUSED="$(PATH="$TMP/stubbin:$PATH" "$BIN" promote "$PID" --repo o/n --yes </dev/null 2>&1)" && bad "promote --yes with an unknown visibility exited 0" \
+  || { echo "$REFUSED" | grep -q "pass --public" && ok "promote --yes refuses a repo it can't check without --public" \
+  || bad "promote --yes failed, but not with the visibility refusal: $REFUSED"; }
 
 hr "5. hooks: >> captured, normal passes through (per-agent schemas printed)"
 for agent in claude codex cursor; do

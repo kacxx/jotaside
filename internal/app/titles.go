@@ -92,9 +92,11 @@ func transcriptTitle(path string) string {
 }
 
 // terminalEscapes matches the escape sequences a terminal acts on: CSI (ESC [
-// or the 8-bit form, parameters, a final byte), OSC (ESC ] up to BEL or ST) and
-// other two-byte ESC sequences.
-var terminalEscapes = regexp.MustCompile(`(?:\x1b\[|\x{9b})[0-?]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?|\x1b[@-Z\\-_]`)
+// or the 8-bit form, parameters, a final byte), OSC (ESC ] up to BEL or ST,
+// such as an OSC 8 hyperlink or an OSC 0 window title) and other two-byte ESC
+// sequences. An OSC's text can't hold control characters, so one left
+// unterminated ends at the next line instead of taking the rest of the text.
+var terminalEscapes = regexp.MustCompile(`(?:\x1b\[|\x{9b})[0-?]*[ -/]*[@-~]|\x1b\][^\x00-\x1f\x7f-\x{9f}]*(?:\x07|\x1b\\)?|\x1b[@-Z\\-_]`)
 
 // cleanTitle makes a transcript's title safe to print: terminal escape
 // sequences are removed whole, any other control character becomes a space,
@@ -107,4 +109,19 @@ func cleanTitle(s string) string {
 		}
 		return r
 	}, s)), " ")
+}
+
+// cleanText makes multi-line text from a transcript or a hook payload safe to
+// print or publish: terminal escape sequences are removed whole, newlines and
+// tabs are kept, and any other control character, such as a carriage return
+// that would let later text overwrite a line, becomes a space. Other
+// whitespace is left as it is.
+func cleanText(s string) string {
+	s = terminalEscapes.ReplaceAllString(s, "")
+	return strings.Map(func(r rune) rune {
+		if r != '\n' && r != '\t' && unicode.IsControl(r) {
+			return ' '
+		}
+		return r
+	}, s)
 }

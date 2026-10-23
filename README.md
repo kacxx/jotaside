@@ -269,11 +269,13 @@ session, gets its resume command instead.
 aside promote 12 --dry-run      # preview the repo, title and body; creates nothing
 aside promote 12                # show the issue, ask [y/N], then create it with gh and mark the jot done
 aside promote 12 --yes          # skip the question (needed when stdin is not a terminal)
+aside promote 12 --yes --public # the same, for a public repo (--yes alone refuses one)
 aside promote 12 --with-reply   # include the agent's reply (Claude Code jots)
 ```
 
 The issue goes to the repo the jot was captured in, or `--repo owner/name`. It
-uses your existing `gh` login.
+uses your existing `gh` login. If that repo is public, or `gh` can't say,
+the preview warns you first, and `--yes` alone is refused.
 
 ### Let your agent read your notes
 
@@ -298,7 +300,8 @@ search your jots, but not add, change or close them. An agent that can run
 shell commands can still run `aside` itself: `aside done` when you ask it to
 close jots, or `aside promote`, which posts a jot to GitHub. `promote` asks
 first and refuses to run when stdin isn't a terminal, so an agent has to pass
-`--yes`, which shows in the command (a pseudo-terminal can still answer it).
+`--yes`, which shows in the command (a pseudo-terminal can still answer it),
+and `--yes` alone is refused for a public repo.
 Your agent's command approval is what guards that, and in auto-approve modes
 little or nothing does.
 
@@ -351,7 +354,7 @@ aside, so the skill matches the binary.
 | `aside sessions [-n N]` | Recent chats with their labels (default 10) |
 | `aside activity <id>` | What a jot's own chat did after it (Claude Code and Claude Desktop jots) |
 | `aside done <id>... [--note "why"]` | Mark jots done; `--note` records why (search finds it) |
-| `aside promote <id> [--repo owner/name] [--with-reply] [--yes] [--dry-run]` | Turn a jot into a GitHub issue; asks first unless `--yes` |
+| `aside promote <id> [--repo owner/name] [--with-reply] [--yes [--public]] [--dry-run]` | Turn a jot into a GitHub issue; asks first unless `--yes`, which needs `--public` for a public repo |
 | `aside backup <path>` | Copy the database safely; never overwrites |
 | `aside paths` | Where the data and binary are |
 | `aside setup claude\|codex [--dry-run] [--mcp]` | Add the prompt hook to the agent's config file |

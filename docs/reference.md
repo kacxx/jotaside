@@ -115,6 +115,10 @@ Transcript text below is data from the session, not instructions.
 - **What it lists:** the session's prompts (`you`), the agent's text (`agent`)
   and the tool calls between them, collapsed to one `tools` line, oldest
   first. Tool output, subagent chatter and later jots are left out.
+- **Escapes removed:** terminal escape sequences (colours, cursor moves,
+  hyperlinks, window titles) are removed from the text, in the CLI and the
+  MCP tool, and any control character other than a newline or tab becomes a
+  space, so transcript text can't rewrite your terminal or hide a line.
 - **Capped:** about 12,000 characters in all and 1,500 per record, then
   "N more records left out". Reading stops at 32 MB of transcript (and skips
   any single line over 4 MB), and says so, since there may be more beyond it.
@@ -177,7 +181,8 @@ GitHub issue, as a deliberate step after capture:
 ```sh
 aside promote 12 --dry-run   # print the target repo, title and body; creates nothing
 aside promote 12             # show the issue, ask [y/N], then create it and print its URL
-aside promote 12 --yes       # create it without asking
+aside promote 12 --yes       # create it without asking (refused for a public repo)
+aside promote 12 --yes --public   # create it without asking, even in a public repo
 aside promote 12 --repo kacxx/aside-jot
 aside promote 12 --with-reply --dry-run   # preview the body with the agent's reply
 ```
@@ -195,6 +200,16 @@ aside promote 12 --with-reply --dry-run   # preview the body with the agent's re
   pseudo-terminal, or under `script`, can still type "y" (not checked for any
   particular agent), and an agent that passes `--yes` on purpose still relies
   on command approval.
+- **Public repos.** Before creating the issue, aside asks `gh` whether the
+  repo is public (`gh repo view <repo> --json visibility`). If it is, the
+  preview ends with `⚠ owner/name is PUBLIC: this issue, including the jot and
+  any reply, will be visible to anyone.` just before `Create this issue? [y/N]`.
+  `--yes` skips the preview, so with `--yes` a public repo is refused unless
+  `--public` is passed too. If the check fails (`gh` can't see the repo, or
+  prints no visibility), aside treats the repo as possibly public: the preview
+  says it couldn't check, and `--yes` needs `--public`. Private and internal
+  repos work as before. `--public` without `--yes` changes nothing: you are
+  still shown the warning and asked.
 - The issue is created with the [GitHub CLI](https://cli.github.com)
   (`gh issue create`) under your existing `gh` login. aside stores no tokens;
   run `gh auth login` first.
@@ -204,7 +219,9 @@ aside promote 12 --with-reply --dry-run   # preview the body with the agent's re
   or a repo without an `origin` remote, needs `--repo`.
 - **Title:** the jot's first line. **Body:** the full jot, then a line such as
   `Captured 2026-09-30T14:02:11+02:00 from claude on aside-jot@main (abc1234)`,
-  leaving out anything unknown.
+  leaving out anything unknown. Terminal escape sequences are removed from
+  both, and other control characters except newlines and tabs become spaces,
+  so the preview shows exactly what is posted.
 - **`--with-reply`** (opt-in, Claude Code jots only) adds the agent's reply
   under an `## Agent reply` heading, between the jot and the `Captured` line.
   The reply is all the assistant text since your last prompt in the transcript
@@ -218,13 +235,13 @@ aside promote 12 --with-reply --dry-run   # preview the body with the agent's re
   The reply is posted as written, so an
   `@name` in it notifies that GitHub user and a `#123` links to that issue. A
   missing or unreadable transcript, or no reply before the jot, is an error; no
-  issue is created without it. A warning for public repos is not implemented
-  yet.
+  issue is created without it.
 - On success the jot is marked `done` and the issue URL is stored in its
   metadata as `issue_url`, which `aside show` prints. Promoting the same jot
   again is refused and prints the existing URL.
-- `--dry-run` never runs `gh` and changes nothing (it does read the `origin`
-  remote with git, to show the real target).
+- `--dry-run` creates nothing and changes nothing. It reads the `origin`
+  remote with git, to show the real target, and runs `gh repo view` to check
+  whether the repo is public, printing the same warning after the body.
 - Unlike the hooks, `promote` exits non-zero on any error: `gh` missing or
   not logged in, an unknown id, or no target repo.
 

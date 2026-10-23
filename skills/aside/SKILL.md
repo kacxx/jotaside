@@ -170,6 +170,9 @@ it can't spend a pile of tokens on stale sessions.
   run it only when the user says to. When they do, use the full path to aside
   that the MCP tool descriptions give (a shell may not have `aside` on its
   `PATH`), or `aside` if the MCP tools aren't listed.
+- If `aside promote --yes` is refused because the repo is public (or its
+  visibility couldn't be checked), tell the user and stop. Don't add
+  `--public` unless they say the issue may be public.
 - Opening a chat: when an entry has a non-empty `open_command`, offer it, and
   run it only when the user asks. If running it fails, give the user the command exactly as
   given (it has the full path to aside) to run in their own terminal. Don't

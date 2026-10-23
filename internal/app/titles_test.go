@@ -118,6 +118,27 @@ func TestCleanTitleRemovesTerminalEscapes(t *testing.T) {
 	}
 }
 
+func TestCleanTextKeepsLinesAndRemovesEscapes(t *testing.T) {
+	for _, tc := range []struct{ in, want string }{
+		// A line erase, carriage return and cursor-up would let "hidden"
+		// overwrite "visible" on a terminal; both stay visible.
+		{"visible\x1b[2K\r\x1b[1Ahidden", "visible hidden"},
+		{"see \x1b]8;;https://evil.example\x1b\\the docs\x1b]8;;\x1b\\ now", "see the docs now"},
+		{"see \x1b]8;;https://evil.example\x07the docs\x1b]8;;\x07", "see the docs"},
+		{"\x1b]0;pwned\x07title set", "title set"},
+		{"bare\rreturn", "bare return"},
+		{"a\u009b2Jb\u0085c", "ab c"},
+		{"\x1b[31mred\x1b[0m\n\tindented\n\n  two  spaces ", "red\n\tindented\n\n  two  spaces "},
+		// An unterminated OSC ends at the line, so the next line survives.
+		{"one\x1b]0;unterminated\ntwo", "one\ntwo"},
+		{"keep \u00e9 and \u2014 and emoji \U0001F600", "keep \u00e9 and \u2014 and emoji \U0001F600"},
+	} {
+		if got := cleanText(tc.in); got != tc.want {
+			t.Errorf("cleanText(%q) = %q, want %q", tc.in, got, tc.want)
+		}
+	}
+}
+
 func TestSessionTitleUnusableCustomFallsBackToAI(t *testing.T) {
 	blank := `{"type":"custom-title","customTitle":"\u001b[0m \t"}` + "\n"
 	if got := titleOf(t, "claude", blank+aiTitleOne); got != "Generated name" {

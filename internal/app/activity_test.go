@@ -74,6 +74,29 @@ func TestActivityAfterTheJot(t *testing.T) {
 	}
 }
 
+func TestActivityRemovesTerminalEscapes(t *testing.T) {
+	// The helpers quote with %q, which writes \x1b and \a, not JSON's \u escapes.
+	j := strings.NewReplacer(`\x1b`, `\u001b`, `\a`, `\u0007`).Replace
+	a := activityFor(writeTranscript(t,
+		j(userLine("2026-10-12T02:17:00Z", "check \x1b]0;pwned\athis\rnow")),
+		j(toolLine("2026-10-12T02:17:01Z", "Ba\x1b[2Ksh")),
+		j(assistantLine("2026-10-12T02:17:02Z", "visible\x1b[2K\r\x1b[1Ahidden\nsee \x1b]8;;https://evil.example\x1b\\the docs\x1b]8;;\x1b\\\n\tdone")),
+		j(assistantLine("2026-10-12T02:17:03Z", "\x1b[2J\r")),
+	))
+	var got []string
+	for _, r := range a.Records {
+		got = append(got, r.Role+": "+r.Text)
+	}
+	want := []string{
+		"user: check this now",
+		"tools: 1 tool call: Bash",
+		"assistant: visible hidden\nsee the docs\n\tdone",
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("records:\n%q\nwant:\n%q", got, want)
+	}
+}
+
 func TestActivityNothingAfterTheJot(t *testing.T) {
 	a := activityFor(writeTranscript(t, userLine("2026-10-12T02:10:00Z", "before")))
 	if a.Unavailable != "" || len(a.Records) != 0 || a.Omitted != 0 {

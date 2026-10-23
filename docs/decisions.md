@@ -368,3 +368,35 @@ read yet.
 option), or the evidence proves clear enough that closing the obvious cases
 without asking is worth the risk (see
 [Read-only covers the MCP server, not the agent](#read-only-covers-the-mcp-server-not-the-agent)).
+
+## Public repos need `--public` under `--yes`
+
+**Decided:** before creating an issue, `aside promote` asks `gh repo view`
+for the target repo's visibility. A public repo gets a warning line in the
+preview, just before `[y/N]`, and in `--dry-run` output. With `--yes`, which
+skips the preview, a public repo is refused unless `--public` is also passed.
+If the lookup fails, the repo is treated as possibly public: the preview says
+so, and `--yes` needs `--public` too. Private and internal repos are
+unchanged. A dry run now runs `gh`, but only that read.
+
+**Why:** a jot is a private note, and `--with-reply` can add transcript text
+with secrets or internal paths. Asking first
+([Read-only covers the MCP server, not the agent](#read-only-covers-the-mcp-server-not-the-agent))
+shows the person what will be posted, but not who can read it: the preview
+looked the same for a private repo and a public one. Under `--yes` no
+one sees a preview, and an agent usually has to pass `--yes`, so a public
+issue could be published with nothing in the command saying it would be
+public. `--public` makes that choice visible in the command, where command
+approval can see it. Failing safe on an unknown visibility follows the same
+rule as the rest of promote: when in doubt, don't publish.
+
+**Verified:** on gh 2.92.0 (2026-10-24), `gh repo view OWNER/NAME --json
+visibility` and the `github.com/OWNER/NAME` form both print
+`{"visibility":"PUBLIC"}` for a public repo, and a missing repo exits 1 with
+`GraphQL: Could not resolve to a Repository …`. The promote flow itself was
+checked with a stand-in `gh`, not by creating real issues; GitHub Enterprise
+was not checked.
+
+**Revisit if:** `gh` stops reporting visibility for a host people use (every
+`--yes` there would then need `--public`), or GitHub adds a visibility a
+public check doesn't cover.

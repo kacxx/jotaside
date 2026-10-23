@@ -60,7 +60,7 @@ Usage:
   aside find <query...>      sessions with a jot matching the query, and how to resume them
   aside sessions [-n N]      recent sessions with their label (default 10, 0 = all)
   aside done <id>... [--note "why"]  mark jots as done, optionally recording why
-  aside promote <id> [--repo owner/name] [--with-reply] [--yes] [--dry-run]
+  aside promote <id> [--repo owner/name] [--with-reply] [--yes [--public]] [--dry-run]
                              turn a jot into a GitHub issue with the gh CLI
   aside backup <path>        write a consistent copy of the database (never overwrites)
   aside paths                print data paths and check which aside is on PATH
@@ -375,11 +375,12 @@ func cmdPromote(ctx context.Context, svc *app.Service, args []string, stdin io.R
 	dryRun := fs.Bool("dry-run", false, "print the issue without creating it")
 	withReply := fs.Bool("with-reply", false, "include the agent's last reply before the jot (Claude Code only)")
 	yes := fs.Bool("yes", false, "create the issue without asking first (required when stdin is not a terminal)")
+	public := fs.Bool("public", false, "with --yes, create the issue even if the repo is public or its visibility can't be checked")
 	// Flags may come before or after the id.
 	var pos []string
 	for {
 		if err := fs.Parse(args); err != nil {
-			return fmt.Errorf("promote: %w (usage: aside promote <id> [--repo owner/name] [--with-reply] [--yes] [--dry-run])", err)
+			return fmt.Errorf("promote: %w (usage: aside promote <id> [--repo owner/name] [--with-reply] [--yes [--public]] [--dry-run])", err)
 		}
 		if fs.NArg() == 0 {
 			break
@@ -389,9 +390,9 @@ func cmdPromote(ctx context.Context, svc *app.Service, args []string, stdin io.R
 	}
 	id, err := parseID(pos)
 	if err != nil {
-		return fmt.Errorf("%w (usage: aside promote <id> [--repo owner/name] [--with-reply] [--yes] [--dry-run])", err)
+		return fmt.Errorf("%w (usage: aside promote <id> [--repo owner/name] [--with-reply] [--yes [--public]] [--dry-run])", err)
 	}
-	req := app.PromoteRequest{ID: id, Repo: *repo, DryRun: *dryRun, WithReply: *withReply}
+	req := app.PromoteRequest{ID: id, Repo: *repo, DryRun: *dryRun, WithReply: *withReply, Public: *public}
 	if !*yes && !*dryRun {
 		// A jot is a private note and the target repo may be public, so always
 		// show what would be posted and ask. The terminal check is inside
@@ -402,7 +403,7 @@ func cmdPromote(ctx context.Context, svc *app.Service, args []string, stdin io.R
 			if !stdinIsTerminal(stdin) {
 				return errors.New("promote posts to GitHub and asks first, but stdin is not a terminal; run it in a terminal, or pass --yes to skip the question")
 			}
-			fmt.Fprintf(promptOut, "repo:  %s\ntitle: %s\n\n%s\nCreate this issue? [y/N] ", p.Repo, p.Title, p.Body)
+			fmt.Fprintf(promptOut, "repo:  %s\ntitle: %s\n\n%s\n%sCreate this issue? [y/N] ", p.Repo, p.Title, p.Body, warningLine(p))
 			answer, _ := bufio.NewReader(stdin).ReadString('\n')
 			if a := strings.ToLower(strings.TrimSpace(answer)); a != "y" && a != "yes" {
 				return app.ErrNotConfirmed
@@ -422,10 +423,21 @@ func cmdPromote(ctx context.Context, svc *app.Service, args []string, stdin io.R
 	}
 	if *dryRun {
 		fmt.Fprintf(w, "repo:  %s\ntitle: %s\n\n%s", p.Repo, p.Title, p.Body)
+		if line := warningLine(p); line != "" {
+			fmt.Fprintf(w, "\n%s", line)
+		}
 		return nil
 	}
 	fmt.Fprintln(w, p.URL)
 	return nil
+}
+
+// warningLine is p's public-repo warning as a line of its own, or "".
+func warningLine(p app.Promotion) string {
+	if p.Warning == "" {
+		return ""
+	}
+	return p.Warning + "\n"
 }
 
 // desktopSessionsDir, if set, replaces where Claude Desktop's session files

@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -10,6 +11,7 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/kacxx/aside-jot/internal/store"
 )
@@ -51,8 +53,14 @@ type PromoteRequest struct {
 	// Confirm, if set, is shown the issue just before it is created; the
 	// issue is created only if it returns nil. Return ErrNotConfirmed to
 	// decline; any other error is returned as is. It is not called on a dry
-	// run, and runs after the jot, repo and gh login have been checked.
+	// run, and runs after the jot, repo, gh login and the repo's visibility
+	// have been checked, so it can show the Promotion's Warning.
 	Confirm func(Promotion) error
+	// Public lets the issue be created without Confirm in a repo that is
+	// public, or whose visibility could not be checked. Without Confirm and
+	// without Public, Promote refuses such a repo. With Confirm it changes
+	// nothing: whoever confirms is shown the Warning.
+	Public bool
 }
 
 // ErrNotConfirmed is returned when Confirm declines the issue.
@@ -64,6 +72,14 @@ type Promotion struct {
 	Title string
 	Body  string
 	URL   string // empty on a dry run
+	// Visibility is the repo's visibility as gh reports it: PUBLIC, PRIVATE
+	// or INTERNAL, or "" if it could not be checked.
+	Visibility string
+	// Warning, if not empty, says the issue may be visible to anyone: the
+	// repo is public, or its visibility could not be checked.
+	Warning string
+
+	visibilityError string // why the visibility is unknown
 }
 
 // AlreadyPromotedError is returned for a jot that already has an issue.
@@ -77,8 +93,11 @@ func (e *AlreadyPromotedError) Error() string {
 }
 
 // Promote creates a GitHub issue from a jot with the gh CLI, then records the
-// issue URL in the jot's metadata and marks it done, in one transaction. A dry
-// run only builds the issue: it never runs gh and changes nothing.
+// issue URL in the jot's metadata and marks it done, in one transaction.
+// Before creating it, Promote asks gh whether the repo is public; without
+// Confirm, a public repo, or one it couldn't check, is refused unless
+// req.Public is set. A dry run only builds the issue and checks the repo's
+// visibility: it creates nothing and changes nothing.
 func (s *Service) Promote(ctx context.Context, r Runner, req PromoteRequest) (Promotion, error) {
 	e, err := s.store.Get(ctx, req.ID)
 	if err != nil {
@@ -116,6 +135,8 @@ func (s *Service) Promote(ctx context.Context, r Runner, req PromoteRequest) (Pr
 		}
 	}
 	if req.DryRun {
+		// Looking the visibility up only reads, so a dry run warns too.
+		p.setVisibility(repoVisibility(ctx, r, p.Repo))
 		return p, nil
 	}
 
@@ -128,6 +149,15 @@ func (s *Service) Promote(ctx context.Context, r Runner, req PromoteRequest) (Pr
 			return Promotion{}, errGHMissing
 		}
 		return Promotion{}, fmt.Errorf("gh is not logged in to %s; run 'gh auth login' (%w)", host, err)
+	}
+	p.setVisibility(repoVisibility(ctx, r, p.Repo))
+	if req.Confirm == nil && !req.Public && p.Warning != "" {
+		// No one will see the warning, so fail safe: --yes alone is not
+		// enough to publish a private note where anyone can read it.
+		if p.Visibility == "" {
+			return Promotion{}, fmt.Errorf("%s; pass --public with --yes to create the issue anyway, or leave out --yes to review it first", p.visibilityError)
+		}
+		return Promotion{}, fmt.Errorf("%s is PUBLIC, so the issue, including the jot and any reply, would be visible to anyone; pass --public with --yes to create it anyway, or leave out --yes to review it first", p.Repo)
 	}
 	if req.Confirm != nil {
 		if err := req.Confirm(p); err != nil {
@@ -147,6 +177,39 @@ func (s *Service) Promote(ctx context.Context, r Runner, req PromoteRequest) (Pr
 		return p, fmt.Errorf("created %s but could not record it on jot #%d: %w", p.URL, e.ID, err)
 	}
 	return p, nil
+}
+
+// repoVisibility asks gh for repo's visibility: PUBLIC, PRIVATE or INTERNAL.
+func repoVisibility(ctx context.Context, r Runner, repo string) (string, error) {
+	out, err := r.Run(ctx, nil, "gh", "repo", "view", repo, "--json", "visibility")
+	if err != nil {
+		return "", commandError("gh", err)
+	}
+	var v struct {
+		Visibility string `json:"visibility"`
+	}
+	if err := json.Unmarshal(out, &v); err != nil {
+		return "", errors.New("gh repo view printed no visibility")
+	}
+	switch vis := strings.ToUpper(v.Visibility); vis {
+	case "PUBLIC", "PRIVATE", "INTERNAL":
+		return vis, nil
+	}
+	return "", fmt.Errorf("gh repo view printed visibility %q", v.Visibility)
+}
+
+// setVisibility records the result of repoVisibility on p, with the warning
+// to show for a repo that is public or whose visibility is unknown.
+func (p *Promotion) setVisibility(vis string, err error) {
+	p.Visibility, p.Warning, p.visibilityError = vis, "", ""
+	switch {
+	case err != nil:
+		// The reason comes from gh's stderr; keep it to one printable line.
+		p.visibilityError = fmt.Sprintf("couldn't check whether %s is public (%s)", p.Repo, cleanTitle(err.Error()))
+		p.Warning = "⚠ " + p.visibilityError + ": treat this issue, including the jot and any reply, as visible to anyone."
+	case vis == "PUBLIC":
+		p.Warning = "⚠ " + p.Repo + " is PUBLIC: this issue, including the jot and any reply, will be visible to anyone."
+	}
 }
 
 var errGHMissing = errors.New("gh (GitHub CLI) not found on PATH; install it from https://cli.github.com and run 'gh auth login'")
@@ -171,9 +234,12 @@ func issueURL(out []byte) string {
 	return ""
 }
 
-// IssueTitle is the jot's first line, trimmed.
+// IssueTitle is the jot's first line, trimmed. A jot's text comes from a hook
+// payload or stdin and can hold terminal escapes or control characters, so,
+// like the body, it is cleaned: the preview shows exactly what is posted, and
+// neither can rewrite the terminal it is shown on.
 func IssueTitle(e Entry) string {
-	line, _, _ := strings.Cut(strings.TrimSpace(e.Text), "\n")
+	line, _, _ := strings.Cut(strings.TrimSpace(cleanText(e.Text)), "\n")
 	return strings.TrimSpace(line)
 }
 
@@ -182,7 +248,8 @@ func IssueTitle(e Entry) string {
 func IssueBody(e Entry) string { return issueBody(e, "") }
 
 // issueBody is IssueBody with, if reply is not empty, the agent's reply under
-// its own heading between the jot and the footer.
+// its own heading between the jot and the footer. The whole body is cleaned
+// as IssueTitle is.
 func issueBody(e Entry, reply string) string {
 	var b strings.Builder
 	b.WriteString(strings.TrimSpace(e.Text))
@@ -205,7 +272,7 @@ func issueBody(e Entry, reply string) string {
 		}
 	}
 	b.WriteString("\n")
-	return b.String()
+	return cleanText(b.String())
 }
 
 // ParseRemote turns a git remote URL into the repo form gh's --repo takes:
@@ -274,7 +341,7 @@ func validRepo(repo string) bool {
 	}
 	for _, p := range parts {
 		// A leading "-" would read as a flag to gh or git.
-		if p == "" || strings.HasPrefix(p, "-") || strings.ContainsAny(p, " \t\r\n\\@") {
+		if p == "" || strings.HasPrefix(p, "-") || strings.ContainsAny(p, " \\@") || strings.IndexFunc(p, unicode.IsControl) >= 0 {
 			return false
 		}
 	}

@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"io"
 	"os"
@@ -312,14 +313,43 @@ func TestPathWarning(t *testing.T) {
 }
 
 // ghFake stands in for git and gh: no real GitHub calls.
-type ghFake struct{ calls []string }
+type ghFake struct {
+	calls  []string
+	bodies []string // the body of each issue created
+	// visibility is what gh repo view reports; "" means PRIVATE.
+	visibility string
+	viewErr    error // gh repo view fails with this
+}
 
-func (f *ghFake) Run(_ context.Context, _ io.Reader, name string, args ...string) ([]byte, error) {
+func (f *ghFake) Run(_ context.Context, stdin io.Reader, name string, args ...string) ([]byte, error) {
 	f.calls = append(f.calls, name+" "+strings.Join(args, " "))
-	if name == "gh" && args[0] == "issue" {
+	switch {
+	case name == "gh" && args[0] == "issue":
+		b, _ := io.ReadAll(stdin)
+		f.bodies = append(f.bodies, string(b))
 		return []byte("https://github.com/o/n/issues/7\n"), nil
+	case name == "gh" && args[0] == "repo":
+		if f.viewErr != nil {
+			return nil, f.viewErr
+		}
+		vis := f.visibility
+		if vis == "" {
+			vis = "PRIVATE"
+		}
+		return []byte(`{"visibility":"` + vis + `"}` + "\n"), nil
 	}
 	return nil, nil
+}
+
+// issues counts the issues f created.
+func (f *ghFake) issues() int {
+	n := 0
+	for _, c := range f.calls {
+		if strings.HasPrefix(c, "gh issue") {
+			n++
+		}
+	}
+	return n
 }
 
 // setTerminal makes promote treat stdin as a terminal (or not) for the test.
@@ -384,7 +414,8 @@ func TestPromoteCLI(t *testing.T) {
 	if err != nil || !strings.HasPrefix(out, "repo:  o/n\ntitle: ship it\n\nship it\nwith details\n\nCaptured ") {
 		t.Fatalf("dry run: %q, %v", out, err)
 	}
-	if len(f.calls) != 0 {
+	// A dry run only looks up the repo's visibility.
+	if strings.Join(f.calls, "\n") != "gh repo view o/n --json visibility" {
 		t.Fatalf("dry run ran %v", f.calls)
 	}
 	if out, _ := aside("show", "1"); strings.Contains(out, "issue:") || !strings.Contains(out, "(inbox)") {
@@ -608,6 +639,103 @@ func TestPromoteConfirmCLI(t *testing.T) {
 	}
 }
 
+func TestPromotePublicRepoCLI(t *testing.T) {
+	t.Setenv("JOT_DB", filepath.Join(t.TempDir(), "jot.db"))
+	prompt := capturePrompt(t)
+	f := &ghFake{}
+	old := promoteRunner
+	promoteRunner = f
+	t.Cleanup(func() { promoteRunner = old })
+	aside := func(stdin string, args ...string) (string, error) {
+		var out bytes.Buffer
+		err := run(args, strings.NewReader(stdin), &out)
+		return out.String(), err
+	}
+	for i := 0; i < 8; i++ {
+		if _, err := aside("", "add", "jot"); err != nil {
+			t.Fatal(err)
+		}
+	}
+	const warning = "⚠ o/n is PUBLIC: this issue, including the jot and any reply, will be visible to anyone.\n"
+	const unknown = "⚠ couldn't check whether o/n is public (exit status 4: gh: To get started with GitHub CLI, please run: gh auth login): treat this issue, including the jot and any reply, as visible to anyone.\n"
+
+	// Public, on a terminal: the warning comes right before the question.
+	setTerminal(t, true)
+	f.visibility = "PUBLIC"
+	if _, err := aside("n\n", "promote", "1", "--repo", "o/n"); err == nil ||
+		!strings.HasSuffix(prompt.String(), "\n\n"+warning+"Create this issue? [y/N] ") || f.issues() != 0 {
+		t.Fatalf("public, declined: %v, %q", err, prompt.String())
+	}
+	prompt.Reset()
+	if out, err := aside("y\n", "promote", "1", "--repo", "o/n"); err != nil ||
+		out != "https://github.com/o/n/issues/7\n" || !strings.Contains(prompt.String(), warning) || f.issues() != 1 {
+		t.Fatalf("public, confirmed: %q, %v, %q", out, err, prompt.String())
+	}
+
+	// Public with --yes: refused, terminal or not, unless --public is given.
+	for _, terminal := range []bool{true, false} {
+		setTerminal(t, terminal)
+		prompt.Reset()
+		if out, err := aside("", "promote", "2", "--repo", "o/n", "--yes"); err == nil ||
+			!strings.Contains(err.Error(), "o/n is PUBLIC") || !strings.Contains(err.Error(), "pass --public with --yes") ||
+			out != "" || prompt.Len() != 0 || f.issues() != 1 {
+			t.Fatalf("public --yes (terminal %v): %q, %v", terminal, out, err)
+		}
+	}
+	// --public alone doesn't skip the question, so without a terminal it is
+	// still refused.
+	if _, err := aside("y\n", "promote", "2", "--repo", "o/n", "--public"); err == nil ||
+		!strings.Contains(err.Error(), "not a terminal") || f.issues() != 1 {
+		t.Fatalf("--public without --yes: %v", err)
+	}
+	if out, err := aside("", "promote", "2", "--repo", "o/n", "--yes", "--public"); err != nil ||
+		out != "https://github.com/o/n/issues/7\n" || prompt.Len() != 0 || f.issues() != 2 {
+		t.Fatalf("public --yes --public: %q, %v", out, err)
+	}
+
+	// A dry run prints the warning after the body and creates nothing.
+	out, err := aside("", "promote", "3", "--repo", "o/n", "--dry-run")
+	if err != nil || !strings.HasPrefix(out, "repo:  o/n\ntitle: jot\n\njot\n\nCaptured ") ||
+		!strings.HasSuffix(out, "\n\n"+warning) || f.issues() != 2 {
+		t.Fatalf("public dry run: %q, %v", out, err)
+	}
+
+	// Private: no warning, and --yes works as before.
+	f.visibility = "PRIVATE"
+	if out, err := aside("", "promote", "3", "--repo", "o/n", "--dry-run"); err != nil || strings.Contains(out, "⚠") {
+		t.Fatalf("private dry run: %q, %v", out, err)
+	}
+	if out, err := aside("", "promote", "3", "--repo", "o/n", "--yes"); err != nil ||
+		out != "https://github.com/o/n/issues/7\n" || f.issues() != 3 {
+		t.Fatalf("private --yes: %q, %v", out, err)
+	}
+	setTerminal(t, true)
+	prompt.Reset()
+	_, err = aside("y\n", "promote", "4", "--repo", "o/n")
+	if lines := strings.Split(prompt.String(), "\n"); err != nil || strings.Contains(prompt.String(), "⚠") ||
+		!strings.HasPrefix(lines[len(lines)-3], "Captured ") || lines[len(lines)-2] != "" || lines[len(lines)-1] != "Create this issue? [y/N] " {
+		t.Fatalf("private, confirmed: %v, %q", err, prompt.String())
+	}
+
+	// The lookup fails: warned on a terminal, refused under --yes alone.
+	f.viewErr = errors.New("exit status 4: gh: To get started with GitHub CLI, please run:  gh auth login")
+	prompt.Reset()
+	if _, err := aside("n\n", "promote", "5", "--repo", "o/n"); err == nil ||
+		!strings.HasSuffix(prompt.String(), "\n\n"+unknown+"Create this issue? [y/N] ") {
+		t.Fatalf("unknown, declined: %v, %q", err, prompt.String())
+	}
+	if _, err := aside("", "promote", "5", "--repo", "o/n", "--yes"); err == nil ||
+		!strings.Contains(err.Error(), "couldn't check whether o/n is public") || !strings.Contains(err.Error(), "pass --public with --yes") || f.issues() != 4 {
+		t.Fatalf("unknown --yes: %v (issues %d)", err, f.issues())
+	}
+	if out, err := aside("", "promote", "5", "--repo", "o/n", "--yes", "--public"); err != nil || out != "https://github.com/o/n/issues/7\n" || f.issues() != 5 {
+		t.Fatalf("unknown --yes --public: %q, %v", out, err)
+	}
+	if out, err := aside("", "promote", "6", "--repo", "o/n", "--dry-run"); err != nil || !strings.HasSuffix(out, "\n\n"+unknown) || f.issues() != 5 {
+		t.Fatalf("unknown dry run: %q, %v", out, err)
+	}
+}
+
 func TestCLIDoneSeveralWithNote(t *testing.T) {
 	t.Setenv("JOT_DB", filepath.Join(t.TempDir(), "jot.db"))
 	sh := func(args ...string) (string, error) {
@@ -711,6 +839,85 @@ func TestActivityCLI(t *testing.T) {
 	}
 	if _, err := aside("activity", "99"); err == nil || !strings.Contains(err.Error(), "no jot #99") {
 		t.Fatalf("activity of a missing jot: %v", err)
+	}
+}
+
+// TestTranscriptEscapesCLI checks that transcript text with terminal escapes
+// reaches neither the terminal (activity, the promote preview) nor GitHub.
+func TestTranscriptEscapesCLI(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("JOT_DB", filepath.Join(t.TempDir(), "jot.db"))
+	setTerminal(t, true)
+	prompt := capturePrompt(t)
+	f := &ghFake{}
+	old := promoteRunner
+	promoteRunner = f
+	t.Cleanup(func() { promoteRunner = old })
+
+	const evil = "visible\x1b[2K\r\x1b[1Ahidden\nsee \x1b]8;;https://evil.example\x1b\\the docs\x1b]8;;\x1b\\ \x1b]0;pwned\x07\n\tdone\rnow"
+	const clean = "visible hidden\nsee the docs \n\tdone now"
+	later := time.Now().Add(time.Hour).UTC().Format(time.RFC3339)
+	var lines []byte
+	for _, rec := range []map[string]any{
+		{"type": "assistant", "timestamp": "2020-01-01T00:00:00Z", "message": map[string]any{"role": "assistant",
+			"content": []map[string]string{{"type": "text", "text": "before: " + evil}}}},
+		{"type": "user", "timestamp": later, "message": map[string]any{"role": "user", "content": "after: " + evil}},
+		{"type": "assistant", "timestamp": later, "message": map[string]any{"role": "assistant",
+			"content": []map[string]string{{"type": "text", "text": "reply: " + evil}}}},
+	} {
+		b, _ := json.Marshal(rec)
+		lines = append(append(lines, b...), '\n')
+	}
+	transcript := filepath.Join(t.TempDir(), "t.jsonl")
+	if err := os.WriteFile(transcript, lines, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	svc, err := app.OpenDefault()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Capture(ctx, app.CaptureRequest{Text: "fix \x1b[31mit\x1b[0m\rnow", Source: "claude",
+		Metadata: map[string]any{"transcript_path": transcript}}); err != nil {
+		t.Fatal(err)
+	}
+	svc.Close()
+	aside := func(stdin string, args ...string) string {
+		t.Helper()
+		var out bytes.Buffer
+		if err := run(args, strings.NewReader(stdin), &out); err != nil {
+			t.Fatalf("aside %v: %v", args, err)
+		}
+		return out.String()
+	}
+	noControls := func(what, s string) {
+		t.Helper()
+		if strings.ContainsAny(s, "\x1b\r\a\u009b") {
+			t.Errorf("%s has control characters: %q", what, s)
+		}
+	}
+
+	out := aside("", "activity", "1")
+	noControls("activity", out)
+	for _, want := range []string{"you: after: " + clean, "agent: reply: " + clean} {
+		if !strings.Contains(out, want) {
+			t.Errorf("activity lacks %q:\n%q", want, out)
+		}
+	}
+
+	out = aside("", "promote", "1", "--repo", "o/n", "--with-reply", "--dry-run")
+	noControls("dry run", out)
+	if !strings.HasPrefix(out, "repo:  o/n\ntitle: fix it now\n\nfix it now\n\n## Agent reply\n\nbefore: "+clean+"\n\nCaptured ") {
+		t.Errorf("dry run:\n%q", out)
+	}
+
+	prompt.Reset()
+	aside("y\n", "promote", "1", "--repo", "o/n", "--with-reply")
+	noControls("preview", prompt.String())
+	if !strings.Contains(prompt.String(), "title: fix it now\n\nfix it now\n\n## Agent reply\n\nbefore: "+clean+"\n\nCaptured ") {
+		t.Errorf("preview:\n%q", prompt.String())
+	}
+	if len(f.bodies) != 1 || !strings.Contains(prompt.String(), f.bodies[0]) {
+		t.Errorf("posted %q, previewed %q", f.bodies, prompt.String())
 	}
 }
 

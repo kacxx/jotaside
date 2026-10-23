@@ -307,7 +307,7 @@ where the agent can run commands:
 | --- | --- |
 | "close jot 5, shipped in the last PR" | `aside done 5 --note "shipped in the last PR"` |
 | "open the chat for jot 5" | `aside open 5` (or the `open_command` from the tools) |
-| "make jot 7 an issue" | `aside promote 7 --yes`: promote asks first and refuses without a terminal, so an agent usually has to pass `--yes`, and that flag is what your command approval should catch |
+| "make jot 7 an issue" | `aside promote 7 --yes`: promote asks first and refuses without a terminal, so an agent usually has to pass `--yes`, and that flag is what your command approval should catch. For a public repo, or one `gh` can't check, `--yes` alone is refused; the agent should tell you rather than add `--public` itself |
 
 Each of these is guarded only by the agent's own command approval, which may
 be automatic, so `done` and `promote` (which posts to GitHub) can run without

@@ -92,7 +92,7 @@ func activityFor(e Entry) Activity {
 	}
 	if err := readActivity(meta.TranscriptPath, e.CreatedAt, &a); err != nil {
 		a.Records, a.Omitted, a.ReadLimited = nil, 0, false
-		a.Unavailable = "the transcript cannot be read: " + err.Error()
+		a.Unavailable = "the transcript cannot be read: " + cleanTitle(err.Error())
 	}
 	return a
 }
@@ -192,7 +192,7 @@ func (c *activityCollector) add(line []byte, after time.Time) {
 		for _, name := range names {
 			c.addTool(name, ts)
 		}
-		if text := strings.TrimSpace(contentText(rec.Message.Content, "text")); text != "" {
+		if text := strings.TrimSpace(cleanText(contentText(rec.Message.Content, "text"))); text != "" {
 			c.flushTools()
 			c.push(ActivityRecord{Role: "assistant", At: ts, Text: text})
 		}
@@ -249,11 +249,14 @@ func (c *activityCollector) flushTools() {
 }
 
 // push keeps rec while the text budget lasts, and counts it as left out after.
+// The text is printed by aside activity and returned by the MCP tool, so its
+// terminal escapes and control characters are removed first.
 func (c *activityCollector) push(rec ActivityRecord) {
 	if c.full {
 		c.omitted++
 		return
 	}
+	rec.Text = strings.TrimSpace(cleanText(rec.Text))
 	if rs := []rune(rec.Text); len(rs) > maxActivityRecordRunes {
 		rec.Text = string(rs[:maxActivityRecordRunes-1]) + "…"
 	}
