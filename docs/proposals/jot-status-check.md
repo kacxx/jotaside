@@ -9,7 +9,7 @@ Decisions D1 to D5 come from the owner's review comment on #78 (12 Oct 2026), in
 
 A jot often gets done in the very session it was captured in, but nothing connects the later work to the jot, so it stays open in the inbox. The user closes it by hand, or an agent reading the inbox can't tell it is finished.
 
-Example: in a Claude Desktop session the user jotted `get code reviews on new skill PRs including the enfserv-reto skill` (#31, with "retro" mistyped). They carried on in that session: asked for the PR URLs, added review comments to the PRs, then worked through more reviews on them. #31 stayed open.
+Example: in a Claude Desktop session the user jotted `get code reviews on new skill PRs including the team-reto skill` (#31, with "retro" mistyped). They carried on in that session: asked for the PR URLs, added review comments to the PRs, then worked through more reviews on them. #31 stayed open.
 
 Two things follow:
 - The evidence is in the **same session's transcript, after the jot's `created_at`**.

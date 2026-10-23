@@ -26,19 +26,19 @@ func titleOf(t *testing.T, source, content string) string {
 
 const (
 	titleUserLine = `{"type":"user","message":{"content":"hi"}}` + "\n"
-	customOne     = `{"type":"custom-title","customTitle":"ESM-6993 review","sessionId":"s"}` + "\n"
-	customTwo     = `{"type":"custom-title","customTitle":"ESM-7000 renamed","sessionId":"s"}` + "\n"
+	customOne     = `{"type":"custom-title","customTitle":"ABC-123 review","sessionId":"s"}` + "\n"
+	customTwo     = `{"type":"custom-title","customTitle":"ABC-124 renamed","sessionId":"s"}` + "\n"
 	aiTitleOne    = `{"type":"ai-title","aiTitle":"Generated name","sessionId":"s"}` + "\n"
 )
 
 func TestSessionTitleCustom(t *testing.T) {
-	if got := titleOf(t, "claude", titleUserLine+customOne); got != "ESM-6993 review" {
+	if got := titleOf(t, "claude", titleUserLine+customOne); got != "ABC-123 review" {
 		t.Errorf("title = %q", got)
 	}
 }
 
 func TestSessionTitleCustomBeatsNewerAITitle(t *testing.T) {
-	if got := titleOf(t, "claude", customOne+aiTitleOne); got != "ESM-6993 review" {
+	if got := titleOf(t, "claude", customOne+aiTitleOne); got != "ABC-123 review" {
 		t.Errorf("title = %q", got)
 	}
 }
@@ -50,7 +50,7 @@ func TestSessionTitleAIFallback(t *testing.T) {
 }
 
 func TestSessionTitleRenamedNewestWins(t *testing.T) {
-	if got := titleOf(t, "claude", customOne+titleUserLine+customTwo); got != "ESM-7000 renamed" {
+	if got := titleOf(t, "claude", customOne+titleUserLine+customTwo); got != "ABC-124 renamed" {
 		t.Errorf("title = %q", got)
 	}
 }
@@ -84,7 +84,7 @@ func TestSessionTitleReadsOnlyTheTail(t *testing.T) {
 	if got := titleOf(t, "claude", content); got != "" {
 		t.Errorf("title = %q, want none from outside the tail", got)
 	}
-	if got := titleOf(t, "claude", content+customTwo); got != "ESM-7000 renamed" {
+	if got := titleOf(t, "claude", content+customTwo); got != "ABC-124 renamed" {
 		t.Errorf("title = %q", got)
 	}
 }
@@ -97,7 +97,7 @@ func TestSessionTitleRecordAtWindowStart(t *testing.T) {
 	if len(tail) != titleTailBytes {
 		t.Fatalf("test setup: tail is %d bytes", len(tail))
 	}
-	if got := titleOf(t, "claude", titleUserLine+tail); got != "ESM-6993 review" {
+	if got := titleOf(t, "claude", titleUserLine+tail); got != "ABC-123 review" {
 		t.Errorf("title = %q", got)
 	}
 }
@@ -110,7 +110,7 @@ func TestCleanTitleRemovesTerminalEscapes(t *testing.T) {
 		{"a\u009b31mb", "ab"},
 		{"x\x1bMy", "xy"},
 		{"  plain   title ", "plain title"},
-		{"ESM-6993 review", "ESM-6993 review"},
+		{"ABC-123 review", "ABC-123 review"},
 	} {
 		if got := cleanTitle(tc.in); got != tc.want {
 			t.Errorf("cleanTitle(%q) = %q, want %q", tc.in, got, tc.want)

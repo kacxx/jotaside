@@ -37,7 +37,7 @@ environment variables kept the old name on purpose.
 - `internal/setup/` — `aside setup`: finds the binary path, quotes it, and
   merges the hook into the agent's JSON config (order-preserving, with backup).
 - `internal/gitctx/` — best-effort git context with a time budget.
-- `internal/mcp/` — the read-only MCP server (`inbox`, `show`, `search`, `find`, `sessions`).
+- `internal/mcp/` — the read-only MCP server (`inbox`, `show`, `search`, `find`, `sessions`, `activity`).
 - `testdata/hooks/<agent>/` — recorded hook payloads used by tests and the
   smoke test.
 - `test/e2e/run.sh` — black-box install and hook flow, run in CI.

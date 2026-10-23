@@ -15,6 +15,10 @@ front:
 aside saves it with its git context (repo, branch, commit). In **Claude Code**
 and **Codex** it also blocks the prompt, so the model never sees it and the
 work in front of you keeps going. That is the don't-disrupt-my-flow feature.
+It needs the hook to run: in Codex, it doesn't until you trust it in `/hooks`
+([setup](docs/setup.md#codex-hook-by-hand)). And a jot sent while the agent is
+busy can be queued and merged with other prompts, and then reach the model
+([capture rules](docs/reference.md#capture-rules)).
 
 **Cursor isn't supported.** Cursor keeps a blocked prompt in the chat and sends
 it to the model with your next message, so a `>>` jot there still reaches the

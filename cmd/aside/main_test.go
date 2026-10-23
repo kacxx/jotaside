@@ -718,7 +718,7 @@ func TestInboxShowsSessionTitle(t *testing.T) {
 	t.Setenv("JOT_DB", filepath.Join(t.TempDir(), "jot.db"))
 	ctx := context.Background()
 	tp := filepath.Join(t.TempDir(), "t.jsonl")
-	if err := os.WriteFile(tp, []byte(`{"type":"custom-title","customTitle":"ESM-6993 review"}`+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(tp, []byte(`{"type":"custom-title","customTitle":"ABC-123 review"}`+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	svc, err := app.OpenDefault()
@@ -739,7 +739,7 @@ func TestInboxShowsSessionTitle(t *testing.T) {
 		t.Fatal(err)
 	}
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if len(lines) != 2 || !strings.HasSuffix(lines[1], "  · ESM-6993 review") {
+	if len(lines) != 2 || !strings.HasSuffix(lines[1], "  · ABC-123 review") {
 		t.Fatalf("inbox: %q", out.String())
 	}
 	if strings.Contains(lines[0], "·") {
@@ -750,14 +750,14 @@ func TestInboxShowsSessionTitle(t *testing.T) {
 func TestPrintInboxTitlePlacement(t *testing.T) {
 	var out bytes.Buffer
 	printInbox(&out, []app.Entry{
-		{ID: 1, Text: "note", CreatedAt: time.Now(), SessionTitle: "ESM-6993 review"},
-		{ID: 2, Text: "note", CreatedAt: time.Now(), RepoName: "code", Branch: "main", SessionTitle: "ESM-6993 review"},
+		{ID: 1, Text: "note", CreatedAt: time.Now(), SessionTitle: "ABC-123 review"},
+		{ID: 2, Text: "note", CreatedAt: time.Now(), RepoName: "code", Branch: "main", SessionTitle: "ABC-123 review"},
 	})
 	lines := strings.Split(strings.TrimSpace(out.String()), "\n")
-	if !strings.HasSuffix(lines[0], "note  · ESM-6993 review") {
+	if !strings.HasSuffix(lines[0], "note  · ABC-123 review") {
 		t.Errorf("no location: %q", lines[0])
 	}
-	if !strings.HasSuffix(lines[1], "note  [code@main] · ESM-6993 review") {
+	if !strings.HasSuffix(lines[1], "note  [code@main] · ABC-123 review") {
 		t.Errorf("with location: %q", lines[1])
 	}
 }

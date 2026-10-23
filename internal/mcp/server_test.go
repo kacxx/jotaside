@@ -757,7 +757,7 @@ func TestInboxSessionTitle(t *testing.T) {
 	}
 	defer svc.Close()
 	tp := filepath.Join(t.TempDir(), "t.jsonl")
-	if err := os.WriteFile(tp, []byte(`{"type":"ai-title","aiTitle":"ESM-6987 review"}`+"\n"), 0o600); err != nil {
+	if err := os.WriteFile(tp, []byte(`{"type":"ai-title","aiTitle":"ABC-125 review"}`+"\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	for _, req := range []app.CaptureRequest{
@@ -787,7 +787,7 @@ func TestInboxSessionTitle(t *testing.T) {
 	for _, e := range r.Result.StructuredContent.Entries {
 		byText[e["text"].(string)] = e
 	}
-	if got := byText["with title"]["session_title"]; got != "ESM-6987 review" {
+	if got := byText["with title"]["session_title"]; got != "ABC-125 review" {
 		t.Errorf("session_title = %v", got)
 	}
 	if _, ok := byText["without"]["session_title"]; ok {
