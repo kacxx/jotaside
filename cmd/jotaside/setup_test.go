@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -253,7 +254,9 @@ func TestSetupReplacesPreviousNames(t *testing.T) {
 			b, _ := os.ReadFile(path)
 			got := string(b)
 			q := setup.Quote(bin, false)
-			if strings.Count(got, " hook "+agent) != 1 || !strings.Contains(got, q+" hook "+agent) ||
+			// The config is JSON, so a Windows path's backslashes are escaped in it.
+			want, _ := json.Marshal(q + " hook " + agent)
+			if strings.Count(got, " hook "+agent) != 1 || !strings.Contains(got, string(want[1:len(want)-1])) ||
 				!strings.Contains(got, "/usr/local/bin/other-tool prompt") || !strings.Contains(got, `"model": "x"`) ||
 				strings.Contains(got, "/x/aside") || strings.Contains(got, `"jot hook`) {
 				t.Errorf("config:\n%s", got)
