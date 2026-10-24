@@ -547,3 +547,14 @@ func TestTruncateReply(t *testing.T) {
 		t.Fatal("short reply changed")
 	}
 }
+
+func TestIssueBodyCleansBeforeTrimming(t *testing.T) {
+	// An escape before indentation must not leave a Markdown code block.
+	body := IssueBody(Entry{Text: "\x1b[31m    indented note"})
+	if !strings.HasPrefix(body, "indented note") {
+		t.Fatalf("body starts %q, want the jot without leading spaces", body[:min(len(body), 30)])
+	}
+	if title := IssueTitle(Entry{Text: "\x1b[31m    indented note"}); title != "indented note" {
+		t.Fatalf("title %q", title)
+	}
+}

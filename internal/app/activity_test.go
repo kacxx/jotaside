@@ -82,6 +82,7 @@ func TestActivityRemovesTerminalEscapes(t *testing.T) {
 		j(toolLine("2026-10-12T02:17:01Z", "Ba\x1b[2Ksh")),
 		j(assistantLine("2026-10-12T02:17:02Z", "visible\x1b[2K\r\x1b[1Ahidden\nsee \x1b]8;;https://evil.example\x1b\\the docs\x1b]8;;\x1b\\\n\tdone")),
 		j(assistantLine("2026-10-12T02:17:03Z", "\x1b[2J\r")),
+		j(userLine("2026-10-12T02:17:04Z", "\x1b[2J\r")),
 	))
 	var got []string
 	for _, r := range a.Records {
