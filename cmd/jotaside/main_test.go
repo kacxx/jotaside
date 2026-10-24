@@ -14,7 +14,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kacxx/aside-jot/internal/app"
+	"github.com/kacxx/jotaside/internal/app"
 )
 
 func TestAddStdinBOM(t *testing.T) {
@@ -70,7 +70,7 @@ func TestCLIFlow(t *testing.T) {
 		t.Helper()
 		var out bytes.Buffer
 		if err := run(args, strings.NewReader(stdin), &out); err != nil {
-			t.Fatalf("aside %v: %v", args, err)
+			t.Fatalf("jotaside %v: %v", args, err)
 		}
 		return out.String()
 	}
@@ -147,7 +147,7 @@ func TestFindAndSessions(t *testing.T) {
 		t.Helper()
 		var out bytes.Buffer
 		if err := run(args, strings.NewReader(""), &out); err != nil {
-			t.Fatalf("aside %v: %v", args, err)
+			t.Fatalf("jotaside %v: %v", args, err)
 		}
 		return out.String()
 	}
@@ -245,7 +245,7 @@ func TestHookBlockWriteError(t *testing.T) {
 	if code := runHook([]string{"claude"}, strings.NewReader(`{"prompt":">> x"}`), failWriter{}, &errb); code != 2 {
 		t.Fatalf("exited %d, want 2", code)
 	}
-	if got := errb.String(); !strings.HasPrefix(got, "✓ Jotted #1") || !strings.HasSuffix(got, "aside hook: stdout closed") {
+	if got := errb.String(); !strings.HasPrefix(got, "✓ Jotted #1") || !strings.HasSuffix(got, "jotaside hook: stdout closed") {
 		t.Fatalf("stderr %q", got)
 	}
 }
@@ -272,7 +272,7 @@ func TestBackupReportsAbsolutePath(t *testing.T) {
 	}
 }
 
-// paths warns when a bare "aside" would not run this binary, as on macOS
+// paths warns when a bare "jotaside" would not run this binary, as on macOS
 // where an unrelated tool could shadow it (issue #6).
 func TestPathWarning(t *testing.T) {
 	dir := t.TempDir()
@@ -285,7 +285,7 @@ func TestPathWarning(t *testing.T) {
 	}
 	look := func(found string, err error) func(string) (string, error) {
 		return func(name string) (string, error) {
-			if name != "aside" {
+			if name != "jotaside" {
 				t.Errorf("looked up %q", name)
 			}
 			return found, err
@@ -304,7 +304,7 @@ func TestPathWarning(t *testing.T) {
 	// A file that can't be stat'ed is reported as unchecked, not as a
 	// different binary.
 	gone := filepath.Join(dir, "gone")
-	if got := pathWarning(self, look(gone, nil)); !strings.Contains(got, "could not check 'aside' on PATH") || !strings.Contains(got, "use "+self) {
+	if got := pathWarning(self, look(gone, nil)); !strings.Contains(got, "could not check 'jotaside' on PATH") || !strings.Contains(got, "use "+self) {
 		t.Errorf("PATH entry vanished: %q", got)
 	}
 	if got := pathWarning(gone, look(self, nil)); !strings.Contains(got, "could not check this binary") || !strings.Contains(got, "use "+gone) {
@@ -401,16 +401,16 @@ func TestPromoteCLI(t *testing.T) {
 	old := promoteRunner
 	promoteRunner = f
 	t.Cleanup(func() { promoteRunner = old })
-	aside := func(args ...string) (string, error) {
+	jotaside := func(args ...string) (string, error) {
 		var out bytes.Buffer
 		err := run(args, strings.NewReader("y\n"), &out)
 		return out.String(), err
 	}
 
-	if _, err := aside("add", "ship it\nwith details"); err != nil {
+	if _, err := jotaside("add", "ship it\nwith details"); err != nil {
 		t.Fatal(err)
 	}
-	out, err := aside("promote", "1", "--dry-run", "--repo", "o/n")
+	out, err := jotaside("promote", "1", "--dry-run", "--repo", "o/n")
 	if err != nil || !strings.HasPrefix(out, "repo:  o/n\ntitle: ship it\n\nship it\nwith details\n\nCaptured ") {
 		t.Fatalf("dry run: %q, %v", out, err)
 	}
@@ -418,31 +418,31 @@ func TestPromoteCLI(t *testing.T) {
 	if strings.Join(f.calls, "\n") != "gh repo view o/n --json visibility" {
 		t.Fatalf("dry run ran %v", f.calls)
 	}
-	if out, _ := aside("show", "1"); strings.Contains(out, "issue:") || !strings.Contains(out, "(inbox)") {
+	if out, _ := jotaside("show", "1"); strings.Contains(out, "issue:") || !strings.Contains(out, "(inbox)") {
 		t.Fatalf("dry run changed the jot: %q", out)
 	}
 
 	// The jot was added outside a repo, so the target must be given.
-	if _, err := aside("promote", "1"); err == nil || !strings.Contains(err.Error(), "pass --repo") {
+	if _, err := jotaside("promote", "1"); err == nil || !strings.Contains(err.Error(), "pass --repo") {
 		t.Fatalf("no repo: %v", err)
 	}
-	if out, err := aside("promote", "--repo=o/n", "#1"); err != nil || out != "https://github.com/o/n/issues/7\n" {
+	if out, err := jotaside("promote", "--repo=o/n", "#1"); err != nil || out != "https://github.com/o/n/issues/7\n" {
 		t.Fatalf("promote: %q, %v", out, err)
 	}
 	if !strings.Contains(prompt.String(), "title: ship it") || !strings.HasSuffix(prompt.String(), "[y/N] ") {
 		t.Fatalf("prompt: %q", prompt.String())
 	}
-	if out, _ := aside("show", "1"); !strings.Contains(out, "(done)") || !strings.Contains(out, "issue:     https://github.com/o/n/issues/7") {
+	if out, _ := jotaside("show", "1"); !strings.Contains(out, "(done)") || !strings.Contains(out, "issue:     https://github.com/o/n/issues/7") {
 		t.Fatalf("show after promote: %q", out)
 	}
-	if _, err := aside("promote", "1", "--repo", "o/n"); err == nil || !strings.Contains(err.Error(), "already promoted to https://github.com/o/n/issues/7") {
+	if _, err := jotaside("promote", "1", "--repo", "o/n"); err == nil || !strings.Contains(err.Error(), "already promoted to https://github.com/o/n/issues/7") {
 		t.Fatalf("second promote: %v", err)
 	}
-	if _, err := aside("promote", "99", "--repo", "o/n"); err == nil || !strings.Contains(err.Error(), "no jot #99") {
+	if _, err := jotaside("promote", "99", "--repo", "o/n"); err == nil || !strings.Contains(err.Error(), "no jot #99") {
 		t.Fatalf("unknown id: %v", err)
 	}
 	for _, args := range [][]string{{"promote"}, {"promote", "1", "2"}, {"promote", "1", "--bogus"}, {"promote", "1", "--repo"}} {
-		if _, err := aside(args...); err == nil || !strings.Contains(err.Error(), "usage: aside promote") {
+		if _, err := jotaside(args...); err == nil || !strings.Contains(err.Error(), "usage: jotaside promote") {
 			t.Errorf("%v: %v", args, err)
 		}
 	}
@@ -466,7 +466,7 @@ func TestInboxShowsAge(t *testing.T) {
 		t.Helper()
 		var out bytes.Buffer
 		if err := run(args, strings.NewReader(""), &out); err != nil {
-			t.Fatalf("aside %v: %v", args, err)
+			t.Fatalf("jotaside %v: %v", args, err)
 		}
 		return out.String()
 	}
@@ -527,7 +527,7 @@ func TestPromoteWithReplyCLI(t *testing.T) {
 		return n
 	}
 
-	aside := func(stdin string, args ...string) (string, error) {
+	jotaside := func(stdin string, args ...string) (string, error) {
 		var out bytes.Buffer
 		err := run(args, strings.NewReader(stdin), &out)
 		return out.String(), err
@@ -535,7 +535,7 @@ func TestPromoteWithReplyCLI(t *testing.T) {
 	// Declined (or no answer): the preview is shown and nothing is created.
 	for _, answer := range []string{"", "n\n"} {
 		prompt.Reset()
-		out, err := aside(answer, "promote", "1", "--repo", "o/n", "--with-reply")
+		out, err := jotaside(answer, "promote", "1", "--repo", "o/n", "--with-reply")
 		if err == nil || out != "" || !strings.Contains(prompt.String(), "the diagnosis") || !strings.Contains(prompt.String(), "[y/N]") {
 			t.Fatalf("declined %q: %q, %q, %v", answer, out, prompt.String(), err)
 		}
@@ -545,18 +545,18 @@ func TestPromoteWithReplyCLI(t *testing.T) {
 	}
 	// A dry run prints the body without asking.
 	prompt.Reset()
-	if out, err := aside("", "promote", "1", "--repo", "o/n", "--with-reply", "--dry-run"); err != nil ||
+	if out, err := jotaside("", "promote", "1", "--repo", "o/n", "--with-reply", "--dry-run"); err != nil ||
 		!strings.Contains(out, "the diagnosis") || prompt.Len() != 0 || issues() != 0 {
 		t.Fatalf("dry run: %q, %v", out, err)
 	}
 	// Confirmed.
-	if out, err := aside("y\n", "promote", "1", "--repo", "o/n", "--with-reply"); err != nil ||
+	if out, err := jotaside("y\n", "promote", "1", "--repo", "o/n", "--with-reply"); err != nil ||
 		out != "https://github.com/o/n/issues/7\n" || issues() != 1 {
 		t.Fatalf("confirmed: %q, %v", out, err)
 	}
 	// --yes creates without asking or reading stdin.
 	prompt.Reset()
-	if out, err := aside("", "promote", "2", "--repo", "o/n", "--with-reply", "--yes"); err != nil ||
+	if out, err := jotaside("", "promote", "2", "--repo", "o/n", "--with-reply", "--yes"); err != nil ||
 		prompt.Len() != 0 || issues() != 2 {
 		t.Fatalf("--yes: %q, %v", out, err)
 	}
@@ -569,7 +569,7 @@ func TestPromoteConfirmCLI(t *testing.T) {
 	old := promoteRunner
 	promoteRunner = f
 	t.Cleanup(func() { promoteRunner = old })
-	aside := func(stdin string, args ...string) (string, error) {
+	jotaside := func(stdin string, args ...string) (string, error) {
 		var out bytes.Buffer
 		err := run(args, strings.NewReader(stdin), &out)
 		return out.String(), err
@@ -584,7 +584,7 @@ func TestPromoteConfirmCLI(t *testing.T) {
 		return n
 	}
 	for _, text := range []string{"one", "two", "three", "four"} {
-		if _, err := aside("", "add", text); err != nil {
+		if _, err := jotaside("", "add", text); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -592,26 +592,26 @@ func TestPromoteConfirmCLI(t *testing.T) {
 	// No terminal and no --yes: refused, even with "y" piped in, and nothing
 	// is asked or created.
 	setTerminal(t, false)
-	if out, err := aside("y\n", "promote", "1", "--repo", "o/n"); err == nil ||
+	if out, err := jotaside("y\n", "promote", "1", "--repo", "o/n"); err == nil ||
 		!strings.Contains(err.Error(), "not a terminal") || out != "" || prompt.Len() != 0 || issues() != 0 {
 		t.Fatalf("no terminal: %q, %v, %v", out, err, f.calls)
 	}
 	// A bad id still gets its own error, not the terminal one.
-	if _, err := aside("y\n", "promote", "99", "--repo", "o/n"); err == nil || !strings.Contains(err.Error(), "no jot #99") {
+	if _, err := jotaside("y\n", "promote", "99", "--repo", "o/n"); err == nil || !strings.Contains(err.Error(), "no jot #99") {
 		t.Fatalf("unknown id without a terminal: %v", err)
 	}
 	// A dry run needs no answer, so it works without a terminal.
-	if out, err := aside("", "promote", "1", "--repo", "o/n", "--dry-run"); err != nil ||
+	if out, err := jotaside("", "promote", "1", "--repo", "o/n", "--dry-run"); err != nil ||
 		!strings.Contains(out, "title: one") || prompt.Len() != 0 || issues() != 0 {
 		t.Fatalf("dry run: %q, %v", out, err)
 	}
 	// --yes works without a terminal and does not ask.
-	if out, err := aside("", "promote", "2", "--repo", "o/n", "--yes"); err != nil ||
+	if out, err := jotaside("", "promote", "2", "--repo", "o/n", "--yes"); err != nil ||
 		out != "https://github.com/o/n/issues/7\n" || prompt.Len() != 0 || issues() != 1 {
 		t.Fatalf("--yes: %q, %v", out, err)
 	}
 	// An already-promoted jot reports its URL, not the terminal error.
-	if _, err := aside("y\n", "promote", "2", "--repo", "o/n"); err == nil || !strings.Contains(err.Error(), "already promoted to") {
+	if _, err := jotaside("y\n", "promote", "2", "--repo", "o/n"); err == nil || !strings.Contains(err.Error(), "already promoted to") {
 		t.Fatalf("already promoted without a terminal: %v", err)
 	}
 
@@ -619,7 +619,7 @@ func TestPromoteConfirmCLI(t *testing.T) {
 	setTerminal(t, true)
 	for _, answer := range []string{"", "n\n"} {
 		prompt.Reset()
-		out, err := aside(answer, "promote", "1", "--repo", "o/n")
+		out, err := jotaside(answer, "promote", "1", "--repo", "o/n")
 		if err == nil || out != "" || !strings.Contains(prompt.String(), "repo:  o/n\ntitle: one") || !strings.HasSuffix(prompt.String(), "[y/N] ") {
 			t.Fatalf("declined %q: %q, %q, %v", answer, out, prompt.String(), err)
 		}
@@ -627,13 +627,13 @@ func TestPromoteConfirmCLI(t *testing.T) {
 	if issues() != 1 {
 		t.Fatalf("declined promote ran %v", f.calls)
 	}
-	if out, err := aside("y\n", "promote", "1", "--repo", "o/n"); err != nil ||
+	if out, err := jotaside("y\n", "promote", "1", "--repo", "o/n"); err != nil ||
 		out != "https://github.com/o/n/issues/7\n" || issues() != 2 {
 		t.Fatalf("confirmed: %q, %v", out, err)
 	}
 	// --yes skips the question on a terminal too.
 	prompt.Reset()
-	if out, err := aside("", "promote", "3", "--repo", "o/n", "--yes"); err != nil ||
+	if out, err := jotaside("", "promote", "3", "--repo", "o/n", "--yes"); err != nil ||
 		out != "https://github.com/o/n/issues/7\n" || prompt.Len() != 0 || issues() != 3 {
 		t.Fatalf("--yes on a terminal: %q, %v", out, err)
 	}
@@ -646,13 +646,13 @@ func TestPromotePublicRepoCLI(t *testing.T) {
 	old := promoteRunner
 	promoteRunner = f
 	t.Cleanup(func() { promoteRunner = old })
-	aside := func(stdin string, args ...string) (string, error) {
+	jotaside := func(stdin string, args ...string) (string, error) {
 		var out bytes.Buffer
 		err := run(args, strings.NewReader(stdin), &out)
 		return out.String(), err
 	}
 	for i := 0; i < 8; i++ {
-		if _, err := aside("", "add", "jot"); err != nil {
+		if _, err := jotaside("", "add", "jot"); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -662,12 +662,12 @@ func TestPromotePublicRepoCLI(t *testing.T) {
 	// Public, on a terminal: the warning comes right before the question.
 	setTerminal(t, true)
 	f.visibility = "PUBLIC"
-	if _, err := aside("n\n", "promote", "1", "--repo", "o/n"); err == nil ||
+	if _, err := jotaside("n\n", "promote", "1", "--repo", "o/n"); err == nil ||
 		!strings.HasSuffix(prompt.String(), "\n\n"+warning+"Create this issue? [y/N] ") || f.issues() != 0 {
 		t.Fatalf("public, declined: %v, %q", err, prompt.String())
 	}
 	prompt.Reset()
-	if out, err := aside("y\n", "promote", "1", "--repo", "o/n"); err != nil ||
+	if out, err := jotaside("y\n", "promote", "1", "--repo", "o/n"); err != nil ||
 		out != "https://github.com/o/n/issues/7\n" || !strings.Contains(prompt.String(), warning) || f.issues() != 1 {
 		t.Fatalf("public, confirmed: %q, %v, %q", out, err, prompt.String())
 	}
@@ -676,7 +676,7 @@ func TestPromotePublicRepoCLI(t *testing.T) {
 	for _, terminal := range []bool{true, false} {
 		setTerminal(t, terminal)
 		prompt.Reset()
-		if out, err := aside("", "promote", "2", "--repo", "o/n", "--yes"); err == nil ||
+		if out, err := jotaside("", "promote", "2", "--repo", "o/n", "--yes"); err == nil ||
 			!strings.Contains(err.Error(), "o/n is PUBLIC") || !strings.Contains(err.Error(), "pass --public with --yes") ||
 			out != "" || prompt.Len() != 0 || f.issues() != 1 {
 			t.Fatalf("public --yes (terminal %v): %q, %v", terminal, out, err)
@@ -684,17 +684,17 @@ func TestPromotePublicRepoCLI(t *testing.T) {
 	}
 	// --public alone doesn't skip the question, so without a terminal it is
 	// still refused.
-	if _, err := aside("y\n", "promote", "2", "--repo", "o/n", "--public"); err == nil ||
+	if _, err := jotaside("y\n", "promote", "2", "--repo", "o/n", "--public"); err == nil ||
 		!strings.Contains(err.Error(), "not a terminal") || f.issues() != 1 {
 		t.Fatalf("--public without --yes: %v", err)
 	}
-	if out, err := aside("", "promote", "2", "--repo", "o/n", "--yes", "--public"); err != nil ||
+	if out, err := jotaside("", "promote", "2", "--repo", "o/n", "--yes", "--public"); err != nil ||
 		out != "https://github.com/o/n/issues/7\n" || prompt.Len() != 0 || f.issues() != 2 {
 		t.Fatalf("public --yes --public: %q, %v", out, err)
 	}
 
 	// A dry run prints the warning after the body and creates nothing.
-	out, err := aside("", "promote", "3", "--repo", "o/n", "--dry-run")
+	out, err := jotaside("", "promote", "3", "--repo", "o/n", "--dry-run")
 	if err != nil || !strings.HasPrefix(out, "repo:  o/n\ntitle: jot\n\njot\n\nCaptured ") ||
 		!strings.HasSuffix(out, "\n\n"+warning) || f.issues() != 2 {
 		t.Fatalf("public dry run: %q, %v", out, err)
@@ -702,16 +702,16 @@ func TestPromotePublicRepoCLI(t *testing.T) {
 
 	// Private: no warning, and --yes works as before.
 	f.visibility = "PRIVATE"
-	if out, err := aside("", "promote", "3", "--repo", "o/n", "--dry-run"); err != nil || strings.Contains(out, "⚠") {
+	if out, err := jotaside("", "promote", "3", "--repo", "o/n", "--dry-run"); err != nil || strings.Contains(out, "⚠") {
 		t.Fatalf("private dry run: %q, %v", out, err)
 	}
-	if out, err := aside("", "promote", "3", "--repo", "o/n", "--yes"); err != nil ||
+	if out, err := jotaside("", "promote", "3", "--repo", "o/n", "--yes"); err != nil ||
 		out != "https://github.com/o/n/issues/7\n" || f.issues() != 3 {
 		t.Fatalf("private --yes: %q, %v", out, err)
 	}
 	setTerminal(t, true)
 	prompt.Reset()
-	_, err = aside("y\n", "promote", "4", "--repo", "o/n")
+	_, err = jotaside("y\n", "promote", "4", "--repo", "o/n")
 	if lines := strings.Split(prompt.String(), "\n"); err != nil || strings.Contains(prompt.String(), "⚠") ||
 		!strings.HasPrefix(lines[len(lines)-3], "Captured ") || lines[len(lines)-2] != "" || lines[len(lines)-1] != "Create this issue? [y/N] " {
 		t.Fatalf("private, confirmed: %v, %q", err, prompt.String())
@@ -720,18 +720,18 @@ func TestPromotePublicRepoCLI(t *testing.T) {
 	// The lookup fails: warned on a terminal, refused under --yes alone.
 	f.viewErr = errors.New("exit status 4: gh: To get started with GitHub CLI, please run:  gh auth login")
 	prompt.Reset()
-	if _, err := aside("n\n", "promote", "5", "--repo", "o/n"); err == nil ||
+	if _, err := jotaside("n\n", "promote", "5", "--repo", "o/n"); err == nil ||
 		!strings.HasSuffix(prompt.String(), "\n\n"+unknown+"Create this issue? [y/N] ") {
 		t.Fatalf("unknown, declined: %v, %q", err, prompt.String())
 	}
-	if _, err := aside("", "promote", "5", "--repo", "o/n", "--yes"); err == nil ||
+	if _, err := jotaside("", "promote", "5", "--repo", "o/n", "--yes"); err == nil ||
 		!strings.Contains(err.Error(), "couldn't check whether o/n is public") || !strings.Contains(err.Error(), "pass --public with --yes") || f.issues() != 4 {
 		t.Fatalf("unknown --yes: %v (issues %d)", err, f.issues())
 	}
-	if out, err := aside("", "promote", "5", "--repo", "o/n", "--yes", "--public"); err != nil || out != "https://github.com/o/n/issues/7\n" || f.issues() != 5 {
+	if out, err := jotaside("", "promote", "5", "--repo", "o/n", "--yes", "--public"); err != nil || out != "https://github.com/o/n/issues/7\n" || f.issues() != 5 {
 		t.Fatalf("unknown --yes --public: %q, %v", out, err)
 	}
-	if out, err := aside("", "promote", "6", "--repo", "o/n", "--dry-run"); err != nil || !strings.HasSuffix(out, "\n\n"+unknown) || f.issues() != 5 {
+	if out, err := jotaside("", "promote", "6", "--repo", "o/n", "--dry-run"); err != nil || !strings.HasSuffix(out, "\n\n"+unknown) || f.issues() != 5 {
 		t.Fatalf("unknown dry run: %q, %v", out, err)
 	}
 }
@@ -816,12 +816,12 @@ func TestActivityCLI(t *testing.T) {
 	}
 	svc.Close()
 
-	aside := func(args ...string) (string, error) {
+	jotaside := func(args ...string) (string, error) {
 		var out bytes.Buffer
 		err := run(args, strings.NewReader(""), &out)
 		return out.String(), err
 	}
-	out, err := aside("activity", "1")
+	out, err := jotaside("activity", "1")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -833,11 +833,11 @@ func TestActivityCLI(t *testing.T) {
 	if strings.Contains(out, "before the jot") || strings.Contains(out, "left out") {
 		t.Errorf("activity output:\n%s", out)
 	}
-	out, err = aside("activity", "#2")
+	out, err = jotaside("activity", "#2")
 	if err != nil || !strings.Contains(out, "transcript: unavailable (this jot was not captured in an agent session") {
-		t.Fatalf("activity of an aside add jot: %q %v", out, err)
+		t.Fatalf("activity of a jotaside add jot: %q %v", out, err)
 	}
-	if _, err := aside("activity", "99"); err == nil || !strings.Contains(err.Error(), "no jot #99") {
+	if _, err := jotaside("activity", "99"); err == nil || !strings.Contains(err.Error(), "no jot #99") {
 		t.Fatalf("activity of a missing jot: %v", err)
 	}
 }
@@ -881,11 +881,11 @@ func TestTranscriptEscapesCLI(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc.Close()
-	aside := func(stdin string, args ...string) string {
+	jotaside := func(stdin string, args ...string) string {
 		t.Helper()
 		var out bytes.Buffer
 		if err := run(args, strings.NewReader(stdin), &out); err != nil {
-			t.Fatalf("aside %v: %v", args, err)
+			t.Fatalf("jotaside %v: %v", args, err)
 		}
 		return out.String()
 	}
@@ -896,7 +896,7 @@ func TestTranscriptEscapesCLI(t *testing.T) {
 		}
 	}
 
-	out := aside("", "activity", "1")
+	out := jotaside("", "activity", "1")
 	noControls("activity", out)
 	for _, want := range []string{"you: after: " + clean, "agent: reply: " + clean} {
 		if !strings.Contains(out, want) {
@@ -904,14 +904,14 @@ func TestTranscriptEscapesCLI(t *testing.T) {
 		}
 	}
 
-	out = aside("", "promote", "1", "--repo", "o/n", "--with-reply", "--dry-run")
+	out = jotaside("", "promote", "1", "--repo", "o/n", "--with-reply", "--dry-run")
 	noControls("dry run", out)
 	if !strings.HasPrefix(out, "repo:  o/n\ntitle: fix it now\n\nfix it now\n\n## Agent reply\n\nbefore: "+clean+"\n\nCaptured ") {
 		t.Errorf("dry run:\n%q", out)
 	}
 
 	prompt.Reset()
-	aside("y\n", "promote", "1", "--repo", "o/n", "--with-reply")
+	jotaside("y\n", "promote", "1", "--repo", "o/n", "--with-reply")
 	noControls("preview", prompt.String())
 	if !strings.Contains(prompt.String(), "title: fix it now\n\nfix it now\n\n## Agent reply\n\nbefore: "+clean+"\n\nCaptured ") {
 		t.Errorf("preview:\n%q", prompt.String())

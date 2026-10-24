@@ -36,30 +36,30 @@ var (
 	isArchivedKey     = regexp.MustCompile(`"isArchived"\s*:\s*(true|false)`)
 	desktopEntrypoint = "claude-desktop"
 
-	// The only links aside open will hand to the system.
+	// The only links jotaside open will hand to the system.
 	openableClaude = regexp.MustCompile(`^claude://code/continue\?session=local_(?i:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$`)
 	openableCodex  = regexp.MustCompile(`^codex://threads/(?i:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$`)
 )
 
-// OpenableURL reports whether u is a link aside open may open: exactly a
+// OpenableURL reports whether u is a link jotaside open may open: exactly a
 // Claude Desktop continue link or a Codex thread link, with a UUID id.
 func OpenableURL(u string) bool {
 	return openableClaude.MatchString(u) || openableCodex.MatchString(u)
 }
 
 // OpenCommand returns the shell command that opens jot id's chat with the
-// aside at exe. Agents run it from a shell that may not have aside on its
+// jotaside at exe. Agents run it from a shell that may not have jotaside on its
 // PATH, so it uses the full path.
 func OpenCommand(exe string, id int64) string {
 	return shellQuote(exe) + " open " + strconv.FormatInt(id, 10)
 }
 
-// DoneCommand returns the shell command, with the full path to aside at exe
+// DoneCommand returns the shell command, with the full path to jotaside at exe
 // for the same reason as OpenCommand, that closes jots. exe may be "" when
-// the path is unknown, which gives a bare aside.
+// the path is unknown, which gives a bare jotaside.
 func DoneCommand(exe string) string {
 	if exe == "" {
-		exe = "aside"
+		exe = "jotaside"
 	}
 	return shellQuote(exe) + ` done <id>... [--note "why"]`
 }
@@ -77,7 +77,7 @@ func ResumeFor(e Entry) string {
 
 // headerSize is how much of a Desktop session file is read to find its keys.
 // Both are within the first ~1.1 KB of every file seen; the files are
-// otherwise hundreds of KB of settings aside has no need to read.
+// otherwise hundreds of KB of settings jotaside has no need to read.
 const headerSize = 4096
 
 // linkRef is what a jot (or a session's jots) says about where it came from.
@@ -127,7 +127,7 @@ func (s *Service) SetDesktopSessionsDir(dir string) {
 	s.desktop.dir = dir
 }
 
-// CanOpen reports whether aside open can run on goos: the two systems whose
+// CanOpen reports whether jotaside open can run on goos: the two systems whose
 // default handler for claude:// and codex:// links has been checked.
 func CanOpen(goos string) bool { return goos == "darwin" || goos == "windows" }
 

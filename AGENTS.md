@@ -1,6 +1,6 @@
 # AGENTS.md
 
-Context for coding agents working on aside. Read this first. The README is
+Context for coding agents working on jotaside. Read this first. The README is
 the short user guide; the detail of user-facing behaviour is in
 [docs/reference.md](docs/reference.md) (capture, failure, `find`, `promote`,
 storage), [docs/setup.md](docs/setup.md) (hooks and MCP per agent) and
@@ -8,7 +8,7 @@ storage), [docs/setup.md](docs/setup.md) (hooks and MCP per agent) and
 [docs/decisions.md](docs/decisions.md); check it before reopening a settled
 question.
 
-## What aside is
+## What jotaside is
 
 A Go CLI that captures notes ("jots") typed as `>> …` in an AI coding agent.
 An agent hook sees the prompt, saves it to a local SQLite database with its git
@@ -16,14 +16,12 @@ context, and blocks it so the model never sees it. Jots are read back with the
 CLI or a read-only MCP server, and can be promoted to GitHub issues.
 
 Supported: Claude Code and Codex. Cursor is not supported (see below). The
-command was renamed from `jot` to `aside` because macOS and the BSDs ship
-`/usr/bin/jot`, which shadowed it and made hooks run the wrong program. Don't
-reintroduce a `jot` binary or alias. The data directory and the `JOT_*`
-environment variables kept the old name on purpose.
+command has been renamed twice, `jot` → `aside` → `jotaside`; see the first
+fact below before touching names.
 
 ## Code map
 
-- `cmd/aside/` — CLI entry point, flag parsing and all terminal output
+- `cmd/jotaside/` — CLI entry point, flag parsing and all terminal output
   (`printList`, `printSession`, `age`).
 - `internal/hooks/` — one file per agent (`claude.go`, `codex.go`,
   `cursor.go`) decoding its payload and shaping its replies; `prompt.go` is
@@ -34,8 +32,9 @@ environment variables kept the old name on purpose.
   (jot to GitHub issue via `gh`), `sessions.go` (`find` and `sessions`).
 - `internal/store/` — SQLite (pure Go, no cgo), one `entries` table, owner-only
   file permissions.
-- `internal/setup/` — `aside setup`: finds the binary path, quotes it, and
-  merges the hook into the agent's JSON config (order-preserving, with backup).
+- `internal/setup/` — `jotaside setup`: finds the binary path, quotes it, and
+  merges the hook into the agent's JSON config (order-preserving, with backup);
+  `mcp.go` reads the agent's MCP config to spot a server under an old name.
 - `internal/gitctx/` — best-effort git context with a time budget.
 - `internal/mcp/` — the read-only MCP server (`inbox`, `show`, `search`, `find`, `sessions`, `activity`).
 - `testdata/hooks/<agent>/` — recorded hook payloads used by tests and the
@@ -55,7 +54,7 @@ bash test/e2e/run.sh       # end-to-end, throwaway database
 CI runs all of these on Linux. On Windows it runs `go vet` and `go test`
 (without `-race`, which needs cgo).
 
-`go install ./cmd/aside` installs to `$(go env GOPATH)/bin`, which is
+`go install ./cmd/jotaside` installs to `$(go env GOPATH)/bin`, which is
 `~/go/bin` unless `GOPATH` is set.
 
 Use a throwaway database (`JOT_DB="$(mktemp -d)/jot.db"`) for any manual
@@ -66,6 +65,16 @@ records the results for the initial version.
 
 ## Facts that are easy to get wrong
 
+- **The command was renamed `jot` → `aside` → `jotaside`.** `jot` was
+  shadowed by `/usr/bin/jot` on macOS and the BSDs, so hooks ran the wrong
+  program; `aside` collided with Aside, an AI web browser that also owns the
+  Homebrew cask `aside`. Don't reintroduce a `jot` or `aside` binary or
+  alias. The data directory (`…/jot/jot.db`) and the `JOT_*` environment
+  variables keep the old name on purpose, so existing databases keep working
+  without a migration. `jotaside setup` replaces hooks written under either
+  old name (`previousNames` in `internal/setup/config.go`) and points out an
+  MCP server still registered as `aside` or `jot`. Issues and PRs from before
+  the rename are in [kacxx/aside-jot](https://github.com/kacxx/aside-jot).
 - **Pass-through must be silent.** For an ordinary prompt, the Claude Code and
   Codex hooks print nothing: both add hook stdout to the model's context.
   Cursor's hook prints `{"continue":true}`.
@@ -79,12 +88,12 @@ records the results for the initial version.
 - **Cursor runs Claude Code hooks too.** It imports user hooks from
   `~/.claude/settings.json` and runs them on `beforeSubmitPrompt` next to its
   own, then merges the replies and joins their messages. So one Cursor prompt
-  can reach aside twice; captures are deduplicated by Cursor's
+  can reach jotaside twice; captures are deduplicated by Cursor's
   `generation_id` (`CaptureRequest.OnceKey`), and only the reply that saved
   the jot carries a message.
 - **Cursor sends blocked prompts anyway.** It keeps a blocked prompt in the
   chat and sends it with the next message. This is a Cursor bug
-  ([#25](https://github.com/kacxx/aside-jot/issues/25)) that aside can't work
+  ([#25](https://github.com/kacxx/aside-jot/issues/25)) that jotaside can't work
   around, which is why Cursor is unsupported. Don't test jots in a Cursor chat
   you care about.
 - **Resume directories differ by agent.** Claude Code stores a session under
@@ -100,15 +109,15 @@ records the results for the initial version.
   may inherit them, so check the id against Desktop's session file
   (`cliSessionId`) before building a link from it
   ([#44](https://github.com/kacxx/aside-jot/issues/44)); `internal/app/links.go`
-  does this and builds `open_url`; `aside open` opens it, because clicking
+  does this and builds `open_url`; `jotaside open` opens it, because clicking
   the link in a Desktop chat doesn't work.
 - **The MCP server is read-only by design.** Through it, agents can read jots
   but not create, edit or close them. That's all it guarantees: an agent with
-  shell access can run `aside done` or `aside promote` (which publishes to
+  shell access can run `jotaside done` or `jotaside promote` (which publishes to
   GitHub), guarded only by its command approval, which may be automatic. Don't
   add write tools to the server, and don't claim more than this in docs.
 - **Hook paths are absolute.** Hook and MCP configs use the full path to the
-  binary; `aside paths` warns when a bare `aside` would run something else.
+  binary; `jotaside paths` warns when a bare `jotaside` would run something else.
 
 ## Working agreements
 
@@ -136,5 +145,6 @@ records the results for the initial version.
 
 ## Current work
 
-Open issues are the roadmap and the status: `gh issue list -R kacxx/aside-jot`.
+Open issues are the roadmap and the status: `gh issue list -R kacxx/jotaside`
+(issues from before the rename: `-R kacxx/aside-jot`).
 Don't keep status in this file.

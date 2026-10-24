@@ -97,8 +97,8 @@ type Entry struct {
 	// SessionTitle is the Claude Code session's name, read from its transcript
 	// when the inbox is listed. It is never stored.
 	SessionTitle string `json:"session_title,omitempty"`
-	// OpenCommand is the shell command that opens OpenURL (aside open <id>),
-	// with the full path to aside. Like OpenURL it is never stored; the MCP
+	// OpenCommand is the shell command that opens OpenURL (jotaside open <id>),
+	// with the full path to jotaside. Like OpenURL it is never stored; the MCP
 	// server fills it in.
 	OpenCommand string `json:"open_command,omitempty"`
 }
@@ -106,7 +106,7 @@ type Entry struct {
 // MetaIssueURL is the metadata key holding a promoted jot's issue URL.
 const MetaIssueURL = "issue_url"
 
-// Metadata keys written by aside done: why the jot was closed, and when.
+// Metadata keys written by jotaside done: why the jot was closed, and when.
 const (
 	MetaDoneNote = "done_note"
 	MetaDoneAt   = "done_at"

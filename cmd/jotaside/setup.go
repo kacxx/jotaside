@@ -8,19 +8,19 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/kacxx/aside-jot/internal/setup"
+	"github.com/kacxx/jotaside/internal/setup"
 )
 
-const cursorDocs = "https://github.com/kacxx/aside-jot/blob/main/docs/cursor.md"
+const cursorDocs = "https://github.com/kacxx/jotaside/blob/main/docs/cursor.md"
 
-// setupBinary says which aside to write into the config; tests replace it.
+// setupBinary says which jotaside to write into the config; tests replace it.
 var setupBinary = func() setup.Binary { return setup.Binary{Arg0: os.Args[0]} }
 
 // setupGOOS is the platform the hook is written for; tests replace it.
 var setupGOOS = runtime.GOOS
 
 func cmdSetup(args []string, w io.Writer) error {
-	const usage = "usage: aside setup claude|codex [--dry-run] [--mcp]"
+	const usage = "usage: jotaside setup claude|codex [--dry-run] [--mcp]"
 	fs := flag.NewFlagSet("setup", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	dry := fs.Bool("dry-run", false, "print the planned changes and the resulting file, write nothing")
@@ -44,7 +44,7 @@ func cmdSetup(args []string, w io.Writer) error {
 	switch agent {
 	case "claude", "codex":
 	case "cursor":
-		fmt.Fprintf(w, "Cursor isn't supported, so aside setup cursor writes nothing.\nCursor keeps a blocked prompt in the chat and sends it with your next message,\nwhich defeats the point of a jot. See %s\nTo jot from a terminal instead, use `aside add`.\n", cursorDocs)
+		fmt.Fprintf(w, "Cursor isn't supported, so jotaside setup cursor writes nothing.\nCursor keeps a blocked prompt in the chat and sends it with your next message,\nwhich defeats the point of a jot. See %s\nTo jot from a terminal instead, use `jotaside add`.\n", cursorDocs)
 		return nil
 	default:
 		return fmt.Errorf("unknown agent %q (%s)", agent, usage)
@@ -66,12 +66,30 @@ func cmdSetup(args []string, w io.Writer) error {
 		return err
 	}
 	printSetup(w, agent, h, res, *dry)
-	if *mcp {
-		add := "claude mcp add --scope user aside -- "
-		if agent == "codex" {
-			add = "codex mcp add aside -- "
+
+	mcpCmd, removeCmd := "claude mcp add --scope user jotaside -- ", "claude mcp remove --scope user "
+	if agent == "codex" {
+		mcpCmd, removeCmd = "codex mcp add jotaside -- ", "codex mcp remove "
+	}
+	// An MCP server registered under an earlier name keeps running the old
+	// binary; say how to replace it rather than leave two names around.
+	var old []setup.OldMCPServer
+	if p, err := setup.MCPConfigPath(agent); err == nil {
+		old = setup.FindOldMCPServers(agent, p)
+		if len(old) > 0 {
+			fmt.Fprintf(w, "\n%s registers the jot MCP server under an old name:\n", p)
+			for _, o := range old {
+				fmt.Fprintf(w, "  %s (runs %s)\n", o.Name, o.Command)
+			}
+			fmt.Fprintln(w, "Replace it with the jotaside server (not run for you):")
+			for _, o := range old {
+				fmt.Fprintf(w, "  %s%s\n", removeCmd, o.Name)
+			}
+			fmt.Fprintf(w, "  %s%s mcp\n", mcpCmd, quoted)
 		}
-		fmt.Fprintf(w, "\nTo give %s read-only access to your jots, run (not run for you):\n  %s%s mcp\n", agentName(agent), add, quoted)
+	}
+	if *mcp && len(old) == 0 {
+		fmt.Fprintf(w, "\nTo give %s read-only access to your jots, run (not run for you):\n  %s%s mcp\n", agentName(agent), mcpCmd, quoted)
 	}
 	return nil
 }
@@ -90,16 +108,16 @@ func printSetup(w io.Writer, agent string, h setup.Hook, res setup.Result, dry b
 	case ch.Kind == "unchanged":
 		fmt.Fprintf(w, "✓ %s already has this hook; nothing changed.\n  command: %s\n", res.Path, h.Command)
 	case dry:
-		fmt.Fprintf(w, "Dry run: nothing written.\nWould %s the aside hook in %s\n  command: %s\n", verb(ch.Kind), res.Path, h.Command)
+		fmt.Fprintf(w, "Dry run: nothing written.\nWould %s the jotaside hook in %s\n  command: %s\n", verb(ch.Kind), res.Path, h.Command)
 	default:
-		fmt.Fprintf(w, "✓ %s the aside hook in %s\n  command: %s\n", done(ch.Kind), res.Path, h.Command)
+		fmt.Fprintf(w, "✓ %s the jotaside hook in %s\n  command: %s\n", done(ch.Kind), res.Path, h.Command)
 	}
 	if ch.Kind == "updated" {
 		for _, old := range ch.Replaced {
 			fmt.Fprintf(w, "  replaced: %s\n", old)
 		}
 		if ch.Removed > 0 {
-			fmt.Fprintf(w, "  removed %d duplicate aside entr%s so only one hook runs\n", ch.Removed, plural(ch.Removed, "y", "ies"))
+			fmt.Fprintf(w, "  removed %d duplicate jotaside entr%s so only one hook runs\n", ch.Removed, plural(ch.Removed, "y", "ies"))
 		}
 	}
 	if ch.Kind != "unchanged" {
@@ -123,7 +141,7 @@ func printSetup(w io.Writer, agent string, h setup.Hook, res setup.Result, dry b
 	if agent == "claude" && ch.Kind != "unchanged" {
 		// After the result, so a successful setup leads with the checkmark.
 		fmt.Fprintln(w)
-		fmt.Fprintf(w, "Note: Cursor imports hooks from ~/.claude/settings.json, so this also turns aside on in\nCursor, which isn't supported (see %s).\n", cursorDocs)
+		fmt.Fprintf(w, "Note: Cursor imports hooks from ~/.claude/settings.json, so this also turns jotaside on in\nCursor, which isn't supported (see %s).\n", cursorDocs)
 		if !dry {
 			fmt.Fprintln(w, "Use --dry-run to preview without writing.")
 		}

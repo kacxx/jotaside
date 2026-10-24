@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/kacxx/aside-jot/internal/app"
-	"github.com/kacxx/aside-jot/internal/capture"
+	"github.com/kacxx/jotaside/internal/app"
+	"github.com/kacxx/jotaside/internal/capture"
 )
 
 // PromptInput is the subset of a UserPromptSubmit payload jot uses. Claude

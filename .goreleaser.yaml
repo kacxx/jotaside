@@ -1,11 +1,11 @@
 version: 2
 
-project_name: aside
+project_name: jotaside
 
 builds:
-  - id: aside
-    main: ./cmd/aside
-    binary: aside
+  - id: jotaside
+    main: ./cmd/jotaside
+    binary: jotaside
     env:
       - CGO_ENABLED=0
     goos: [linux, darwin, windows]
@@ -14,9 +14,9 @@ builds:
       - -s -w -X main.version={{.Tag}}
 
 archives:
-  - id: aside
+  - id: jotaside
     formats: [tar.gz]
-    name_template: "aside_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    name_template: "jotaside_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     format_overrides:
       - goos: windows
         formats: [zip]

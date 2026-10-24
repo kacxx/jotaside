@@ -1,11 +1,11 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
-  "bootstrap-sha": "e58e32d328e62cd8f62ae7c703bf04c6766e51dc",
+  "bootstrap-sha": "d75645423f61fca8cdf058d60caffcd3fcc4b45c",
   "packages": {
     ".": {
       "release-type": "go",
       "initial-version": "0.1.0",
-      "package-name": "aside-jot",
+      "package-name": "jotaside",
       "include-component-in-tag": false,
       "bump-minor-pre-major": true,
       "bump-patch-for-minor-pre-major": false,

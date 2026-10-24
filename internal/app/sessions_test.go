@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kacxx/aside-jot/internal/gitctx"
+	"github.com/kacxx/jotaside/internal/gitctx"
 )
 
 func sessionService(t *testing.T) *Service {

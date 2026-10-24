@@ -25,46 +25,47 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd || true)"
 
 hr "1. install (no cgo; pure-Go sqlite)"
-if [ -n "$REPO_ROOT" ] && grep -q '^module github.com/kacxx/aside-jot$' "$REPO_ROOT/go.mod" 2>/dev/null; then
+if [ -n "$REPO_ROOT" ] && grep -q '^module github.com/kacxx/jotaside$' "$REPO_ROOT/go.mod" 2>/dev/null; then
   echo "  installing from checkout: $REPO_ROOT"
-  ( cd "$REPO_ROOT" && go install ./cmd/aside ) && ok "go install ./cmd/aside" || bad "go install from checkout"
+  ( cd "$REPO_ROOT" && go install ./cmd/jotaside ) && ok "go install ./cmd/jotaside" || bad "go install from checkout"
 else
   echo "  installing published @latest"
-  go install github.com/kacxx/aside-jot/cmd/aside@latest && ok "go install @latest" || bad "go install @latest"
+  go install github.com/kacxx/jotaside/cmd/jotaside@latest && ok "go install @latest" || bad "go install @latest"
 fi
-BIN="$(go env GOPATH)/bin/aside"
-[ -x "$BIN" ] && ok "binary present at \$(go env GOPATH)/bin/aside" || bad "binary missing at $BIN"
+BIN="$(go env GOPATH)/bin/jotaside"
+[ -x "$BIN" ] && ok "binary present at \$(go env GOPATH)/bin/jotaside" || bad "binary missing at $BIN"
 
 hr "2. paths / PATH check"
 "$BIN" paths
-if command -v aside >/dev/null 2>&1; then ON_PATH=yes; else ON_PATH=no; fi
-if [ "${ASIDE_E2E_EXPECT_NOT_ON_PATH:-0}" = "1" ]; then
+if command -v jotaside >/dev/null 2>&1; then ON_PATH=yes; else ON_PATH=no; fi
+if [ "${JOTASIDE_E2E_EXPECT_NOT_ON_PATH:-0}" = "1" ]; then
   # The clean-room sets GOPATH under HOME with ~/go/bin off PATH, so this asserts
   # the real new-user case the README warns about: use the absolute binary path.
-  [ "$ON_PATH" = no ] && ok "'aside' is NOT on bare PATH (new-user case reproduced)" \
-                       || bad "'aside' unexpectedly on PATH (fidelity lost)"
+  [ "$ON_PATH" = no ] && ok "'jotaside' is NOT on bare PATH (new-user case reproduced)" \
+                       || bad "'jotaside' unexpectedly on PATH (fidelity lost)"
 else
-  note "'aside' on bare PATH: $ON_PATH (environment-dependent; use the absolute binary path in configs)"
+  note "'jotaside' on bare PATH: $ON_PATH (environment-dependent; use the absolute binary path in configs)"
 fi
 
-hr "2b. aside setup against a throwaway home (never your real config)"
+hr "2b. jotaside setup against a throwaway home (never your real config)"
 SHOME="$TMP/home"; mkdir -p "$SHOME/.claude" "$SHOME/.codex"
 setup() { HOME="$SHOME" USERPROFILE="$SHOME" CLAUDE_CONFIG_DIR= CODEX_HOME= "$BIN" setup "$@" 2>&1; }
 CSET="$SHOME/.claude/settings.json"
-# Other settings, another hook and an old-name aside hook, to be merged into.
-printf '%s\n' '{"theme":"dark","hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo done"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"jot hook claude"}]}]},"zed":1}' >"$CSET"
+# Other settings, another hook and hooks under the old names (jot, aside), to
+# be merged into.
+printf '%s\n' '{"theme":"dark","hooks":{"Stop":[{"hooks":[{"type":"command","command":"echo done"}]}],"UserPromptSubmit":[{"hooks":[{"type":"command","command":"jot hook claude"}]},{"hooks":[{"type":"command","command":"/usr/local/bin/aside hook claude"}]}]},"zed":1}' >"$CSET"
 BEFORE="$(cat "$CSET")"
 OUT="$(setup claude --dry-run --mcp)"; echo "$OUT" | sed 's/^/  /'
 [ "$(cat "$CSET")" = "$BEFORE" ] && ok "setup claude --dry-run writes nothing" || bad "dry run changed settings.json"
-echo "$OUT" | grep -q "claude mcp add --scope user aside -- $BIN mcp" && ok "--mcp prints the command" || bad "--mcp output"
+echo "$OUT" | grep -q "claude mcp add --scope user jotaside -- $BIN mcp" && ok "--mcp prints the command" || bad "--mcp output"
 OUT="$(setup claude)"; echo "$OUT" | sed 's/^/  /'
-grep -q "jot hook" "$CSET" && bad "old jot hook entry kept" || ok "old jot hook entry replaced"
+grep -q -e '"jot hook' -e '/aside hook' "$CSET" && bad "old jot or aside hook entry kept" || ok "old jot and aside hook entries replaced"
 [ "$(grep -c 'hook claude' "$CSET")" = 1 ] && ok "exactly one claude hook" || bad "claude hook duplicated or missing"
 grep -q '"echo done"' "$CSET" && grep -q '"theme": "dark"' "$CSET" && ok "other settings and hooks kept" || bad "other settings lost"
 [ -n "$(ls "$SHOME/.claude"/settings.json.bak-* 2>/dev/null)" ] && ok "backup written" || bad "no backup"
 echo "$OUT" | grep -q "docs/cursor.md" && ok "claude output mentions Cursor" || bad "no Cursor note"
 # The written command is what an agent runs: it must capture a jot.
-CMD="$(sed -n 's/.*"command": "\(.*aside hook claude\)".*/\1/p' "$CSET")"
+CMD="$(sed -n 's/.*"command": "\(.*jotaside hook claude\)".*/\1/p' "$CSET")"
 CAP="$(printf '{"prompt":">> via written hook","cwd":"%s"}' "$TMP" | JOT_DB="$TMP/setup-hook.db" sh -c "$CMD" 2>&1)"
 captured "$CAP" && ok "the written claude hook captures a jot" || bad "written hook output: $CAP"
 setup claude | grep -q "nothing changed" && ok "second setup claude is a no-op" || bad "second setup claude changed something"

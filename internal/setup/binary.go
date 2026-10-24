@@ -1,4 +1,4 @@
-// Package setup installs aside's prompt hook into an agent's config file
+// Package setup installs jotaside's prompt hook into an agent's config file
 // without hand-editing JSON: it finds the binary's path, quotes it for the
 // hook's command string, and merges the hook into the existing config.
 package setup
@@ -23,7 +23,7 @@ type Binary struct {
 	EvalLinks  func(string) (string, error) // filepath.EvalSymlinks, only to spot temp dirs
 }
 
-// Resolve returns the absolute path aside was invoked as. It deliberately does
+// Resolve returns the absolute path jotaside was invoked as. It deliberately does
 // not resolve symlinks: a resolved path pins one exact install and breaks when
 // the tool is reinstalled or upgraded through a symlink. os.Executable alone
 // can't give this, because on Linux it reads /proc/self/exe, which has
@@ -54,15 +54,15 @@ func (b Binary) Resolve() (string, error) {
 	if err != nil {
 		var err2 error
 		if p, err2 = executable(); err2 != nil {
-			return "", fmt.Errorf("cannot find the aside binary: %w", errors.Join(err, err2))
+			return "", fmt.Errorf("cannot find the jotaside binary: %w", errors.Join(err, err2))
 		}
 		if !filepath.IsAbs(p) {
-			return "", fmt.Errorf("cannot find the aside binary: %q is not absolute", p)
+			return "", fmt.Errorf("cannot find the jotaside binary: %q is not absolute", p)
 		}
 	}
 	p = filepath.Clean(p)
 	if isTemporary(p, tmp, evalLinks) {
-		return "", fmt.Errorf("refusing to write %s: it is in a temporary directory (`go run` builds there), so the hook would stop working; move the binary to a folder it will stay in, or run `go install github.com/kacxx/aside-jot/cmd/aside@latest`, and run setup from there", p)
+		return "", fmt.Errorf("refusing to write %s: it is in a temporary directory (`go run` builds there), so the hook would stop working; move the binary to a folder it will stay in, or run `go install github.com/kacxx/jotaside/cmd/jotaside@latest`, and run setup from there", p)
 	}
 	return p, nil
 }

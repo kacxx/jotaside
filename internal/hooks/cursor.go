@@ -4,7 +4,7 @@ import (
 	"context"
 	"io"
 
-	"github.com/kacxx/aside-jot/internal/app"
+	"github.com/kacxx/jotaside/internal/app"
 )
 
 // CursorInput is the subset of the beforeSubmitPrompt payload jot uses.
@@ -71,7 +71,7 @@ func parseCursor(data []byte) (event, prompt string, build func() app.CaptureReq
 			Cwd:       cwd,
 			Metadata:  meta,
 		}
-		// Cursor runs both `aside hook cursor` and an imported `aside hook
+		// Cursor runs both `jotaside hook cursor` and an imported `jotaside hook
 		// claude` on the same prompt; the generation id makes them save it
 		// once, and only the hook that saved it shows the confirmation.
 		if in.GenerationID != "" {

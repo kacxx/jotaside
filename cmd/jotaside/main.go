@@ -1,4 +1,4 @@
-// Command aside is a side channel for thoughts while working with coding agents.
+// Command jotaside is a side channel for thoughts while working with coding agents.
 //
 // Typing ">> some thought" in Claude Code or Codex stores the thought with
 // git context and blocks the prompt, so the model never sees it.
@@ -22,24 +22,24 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/kacxx/aside-jot/internal/app"
-	"github.com/kacxx/aside-jot/internal/hooks"
-	"github.com/kacxx/aside-jot/internal/mcp"
+	"github.com/kacxx/jotaside/internal/app"
+	"github.com/kacxx/jotaside/internal/hooks"
+	"github.com/kacxx/jotaside/internal/mcp"
 	"github.com/mattn/go-isatty"
 )
 
 var version = "" // set with -ldflags "-X main.version=..."
 
-// promoteRunner runs git and gh for aside promote; tests replace it.
+// promoteRunner runs git and gh for jotaside promote; tests replace it.
 var promoteRunner app.Runner = app.ExecRunner{}
 
 // promptOut is where promote shows the issue and asks, so stdout carries only
-// the URL (`url=$(aside promote 12 --yes)`, `aside promote 12 | pbcopy`).
+// the URL (`url=$(jotaside promote 12 --yes)`, `jotaside promote 12 | pbcopy`).
 // Tests replace it.
 var promptOut io.Writer = os.Stderr
 
 // stdinIsTerminal reports whether r is an interactive terminal. promote asks
-// for confirmation only there, so a plain pipe ("echo y | aside promote 12")
+// for confirmation only there, so a plain pipe ("echo y | jotaside promote 12")
 // can't answer. A pseudo-terminal still can: a process that runs commands
 // in one, or under script(1), can type "y". Tests replace it.
 var stdinIsTerminal = func(r io.Reader) bool {
@@ -47,41 +47,41 @@ var stdinIsTerminal = func(r io.Reader) bool {
 	return ok && (isatty.IsTerminal(f.Fd()) || isatty.IsCygwinTerminal(f.Fd()))
 }
 
-const usage = `aside — a side channel for thoughts while working with coding agents
+const usage = `jotaside — a side channel for thoughts while working with coding agents
 
 Usage:
-  aside add <text...>        capture a jot from the terminal (reads stdin if no text)
-  aside inbox [-n N] [--older D]  list the newest inbox jots (default 20, 0 = all),
-                             optionally only those at least D days old
-  aside show <id>            show one jot with its context
-  aside activity <id>        what a jot's own session did after it (Claude Code, Claude Desktop)
-  aside open <id>            open the chat a jot came from (macOS, Windows; Claude Desktop, Codex app)
-  aside search <query...>    search all jots (substring, case-insensitive)
-  aside find <query...>      sessions with a jot matching the query, and how to resume them
-  aside sessions [-n N]      recent sessions with their label (default 10, 0 = all)
-  aside done <id>... [--note "why"]  mark jots as done, optionally recording why
-  aside promote <id> [--repo owner/name] [--with-reply] [--yes [--public]] [--dry-run]
-                             turn a jot into a GitHub issue with the gh CLI
-  aside backup <path>        write a consistent copy of the database (never overwrites)
-  aside paths                print data paths and check which aside is on PATH
-  aside setup claude|codex [--dry-run] [--mcp]
-                             add the prompt hook to the agent's config file
-  aside hook claude|codex|cursor
-                             run as a prompt hook (reads the payload on stdin)
-  aside mcp                  run the read-only MCP server on stdio
-  aside version
+  jotaside add <text...>        capture a jot from the terminal (reads stdin if no text)
+  jotaside inbox [-n N] [--older D]  list the newest inbox jots (default 20, 0 = all),
+                                optionally only those at least D days old
+  jotaside show <id>            show one jot with its context
+  jotaside activity <id>        what a jot's own session did after it (Claude Code, Claude Desktop)
+  jotaside open <id>            open the chat a jot came from (macOS, Windows; Claude Desktop, Codex app)
+  jotaside search <query...>    search all jots (substring, case-insensitive)
+  jotaside find <query...>      sessions with a jot matching the query, and how to resume them
+  jotaside sessions [-n N]      recent sessions with their label (default 10, 0 = all)
+  jotaside done <id>... [--note "why"]  mark jots as done, optionally recording why
+  jotaside promote <id> [--repo owner/name] [--with-reply] [--yes [--public]] [--dry-run]
+                                turn a jot into a GitHub issue with the gh CLI
+  jotaside backup <path>        write a consistent copy of the database (never overwrites)
+  jotaside paths                print data paths and check which jotaside is on PATH
+  jotaside setup claude|codex [--dry-run] [--mcp]
+                                add the prompt hook to the agent's config file
+  jotaside hook claude|codex|cursor
+                                run as a prompt hook (reads the payload on stdin)
+  jotaside mcp                  run the read-only MCP server on stdio
+  jotaside version
 
 Environment:
-  JOT_DB                     database path (default: $XDG_DATA_HOME/jot/jot.db,
-                             else the OS per-user data directory)
-  JOT_BUSY_TIMEOUT_MS        how long each database step waits on a lock
-                             (default 2000, capped at 10000)
+  JOT_DB                        database path (default: $XDG_DATA_HOME/jot/jot.db,
+                                else the OS per-user data directory)
+  JOT_BUSY_TIMEOUT_MS           how long each database step waits on a lock
+                                (default 2000, capped at 10000)
 `
 
 func main() {
 	// If a reader closes its end, a write to stdout must fail with EPIPE rather
 	// than kill the process with SIGPIPE: hooks exit 0 (or 2 for a Claude Code
-	// or Codex block), and aside mcp and the CLI shut down through their normal
+	// or Codex block), and jotaside mcp and the CLI shut down through their normal
 	// error paths.
 	signal.Ignore(syscall.SIGPIPE)
 	args := os.Args[1:]
@@ -89,7 +89,7 @@ func main() {
 		os.Exit(runHook(args[1:], os.Stdin, os.Stdout, os.Stderr))
 	}
 	if err := run(args, os.Stdin, os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, "aside:", err)
+		fmt.Fprintln(os.Stderr, "jotaside:", err)
 		os.Exit(1)
 	}
 }
@@ -99,11 +99,11 @@ func main() {
 func runHook(args []string, stdin io.Reader, stdout, stderr io.Writer) (code int) {
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Fprintln(stderr, "aside hook: internal error:", r)
+			fmt.Fprintln(stderr, "jotaside hook: internal error:", r)
 		}
 	}()
 	if len(args) != 1 {
-		fmt.Fprintln(stderr, "usage: aside hook claude|codex|cursor")
+		fmt.Fprintln(stderr, "usage: jotaside hook claude|codex|cursor")
 		return 0
 	}
 	var h func(context.Context, io.Reader, io.Writer, app.Opener) error
@@ -115,7 +115,7 @@ func runHook(args []string, stdin io.Reader, stdout, stderr io.Writer) (code int
 	case "cursor":
 		h = hooks.Cursor
 	default:
-		fmt.Fprintf(stderr, "aside hook: unknown agent %q (want claude, codex or cursor)\n", args[0])
+		fmt.Fprintf(stderr, "jotaside hook: unknown agent %q (want claude, codex or cursor)\n", args[0])
 		return 0
 	}
 	err := h(context.Background(), stdin, stdout, app.OpenDefault)
@@ -123,12 +123,12 @@ func runHook(args []string, stdin io.Reader, stdout, stderr io.Writer) (code int
 	if errors.As(err, &block) {
 		fmt.Fprint(stderr, block.Reason)
 		if block.WriteErr != nil {
-			fmt.Fprintf(stderr, "\n\naside hook: %v", block.WriteErr)
+			fmt.Fprintf(stderr, "\n\njotaside hook: %v", block.WriteErr)
 		}
 		return 2
 	}
 	if err != nil {
-		fmt.Fprintln(stderr, "aside hook:", err)
+		fmt.Fprintln(stderr, "jotaside hook:", err)
 	}
 	return 0
 }
@@ -146,7 +146,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		fmt.Fprint(stdout, usage)
 		return nil
 	case "version", "--version":
-		fmt.Fprintln(stdout, "aside", buildVersion())
+		fmt.Fprintln(stdout, "jotaside", buildVersion())
 		return nil
 	case "paths":
 		return cmdPaths(stdout)
@@ -302,7 +302,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		return cmdPromote(ctx, svc, args, stdin, stdout)
 	case "backup":
 		if len(args) != 1 {
-			return errors.New("usage: aside backup <path>")
+			return errors.New("usage: jotaside backup <path>")
 		}
 		if err := svc.Backup(ctx, args[0]); err != nil {
 			return err
@@ -316,13 +316,13 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	case "mcp":
 		return mcp.NewServer(svc, buildVersion()).Serve(ctx, stdin, stdout)
 	default:
-		return fmt.Errorf("unknown command %q (run 'aside help')", cmd)
+		return fmt.Errorf("unknown command %q (run 'jotaside help')", cmd)
 	}
 	return nil
 }
 
 func cmdDone(ctx context.Context, svc *app.Service, args []string, w io.Writer) error {
-	const usage = `usage: aside done <id>... [--note "why"]`
+	const usage = `usage: jotaside done <id>... [--note "why"]`
 	fs := flag.NewFlagSet("done", flag.ContinueOnError)
 	fs.SetOutput(io.Discard)
 	note := fs.String("note", "", "why the jots are done; may contain links")
@@ -380,7 +380,7 @@ func cmdPromote(ctx context.Context, svc *app.Service, args []string, stdin io.R
 	var pos []string
 	for {
 		if err := fs.Parse(args); err != nil {
-			return fmt.Errorf("promote: %w (usage: aside promote <id> [--repo owner/name] [--with-reply] [--yes [--public]] [--dry-run])", err)
+			return fmt.Errorf("promote: %w (usage: jotaside promote <id> [--repo owner/name] [--with-reply] [--yes [--public]] [--dry-run])", err)
 		}
 		if fs.NArg() == 0 {
 			break
@@ -390,7 +390,7 @@ func cmdPromote(ctx context.Context, svc *app.Service, args []string, stdin io.R
 	}
 	id, err := parseID(pos)
 	if err != nil {
-		return fmt.Errorf("%w (usage: aside promote <id> [--repo owner/name] [--with-reply] [--yes [--public]] [--dry-run])", err)
+		return fmt.Errorf("%w (usage: jotaside promote <id> [--repo owner/name] [--with-reply] [--yes [--public]] [--dry-run])", err)
 	}
 	req := app.PromoteRequest{ID: id, Repo: *repo, DryRun: *dryRun, WithReply: *withReply, Public: *public}
 	if !*yes && !*dryRun {
@@ -444,7 +444,7 @@ func warningLine(p app.Promotion) string {
 // are looked for. Tests set it.
 var desktopSessionsDir string
 
-// openGOOS and openURL are what aside open runs on; tests replace them.
+// openGOOS and openURL are what jotaside open runs on; tests replace them.
 var (
 	openGOOS = runtime.GOOS
 	openURL  = func(ctx context.Context, u string) error {
@@ -479,7 +479,7 @@ func openWith(ctx context.Context, bin string, args ...string) error {
 
 // cmdOpen opens the chat a jot came from. The link is rebuilt the way show
 // builds it, and only the two known kinds are passed to the system, so a
-// stored value can't make aside open anything else.
+// stored value can't make jotaside open anything else.
 func cmdOpen(ctx context.Context, svc *app.Service, id int64, w io.Writer) error {
 	e, err := svc.Show(ctx, id)
 	if errors.Is(err, app.ErrNotFound) {
@@ -499,7 +499,7 @@ func cmdOpen(ctx context.Context, svc *app.Service, id int64, w io.Writer) error
 		return errors.New(msg)
 	}
 	if !app.CanOpen(openGOOS) {
-		return fmt.Errorf("aside open is only supported on macOS and Windows; the link is %s", u)
+		return fmt.Errorf("jotaside open is only supported on macOS and Windows; the link is %s", u)
 	}
 	if err := openURL(ctx, u); err != nil {
 		return fmt.Errorf("opening %s: %w", u, err)
@@ -526,7 +526,7 @@ func cmdPaths(w io.Writer) error {
 	if err != nil {
 		// Still exit 0: the data paths above are the main output.
 		fmt.Fprintf(w, "binary:       unknown (%v)\n", err)
-		fmt.Fprintln(w, "warning:      could not check which 'aside' is on PATH")
+		fmt.Fprintln(w, "warning:      could not check which 'jotaside' is on PATH")
 		return nil
 	}
 	fmt.Fprintf(w, "binary:       %s\n", exe)
@@ -536,24 +536,24 @@ func cmdPaths(w io.Writer) error {
 	return nil
 }
 
-// pathWarning reports when a bare "aside" would not run exe: nothing named
-// aside is on PATH, or another program is found first. Hook and MCP configs
+// pathWarning reports when a bare "jotaside" would not run exe: nothing named
+// jotaside is on PATH, or another program is found first. Hook and MCP configs
 // should then use exe's absolute path.
 func pathWarning(exe string, lookPath func(string) (string, error)) string {
-	found, err := lookPath("aside")
+	found, err := lookPath("jotaside")
 	if err != nil {
-		return fmt.Sprintf("'aside' is not on PATH; use %s in hook and MCP configs", exe)
+		return fmt.Sprintf("'jotaside' is not on PATH; use %s in hook and MCP configs", exe)
 	}
 	fi, err := os.Stat(found)
 	if err != nil {
-		return fmt.Sprintf("could not check 'aside' on PATH (%v); use %s in hook and MCP configs", err, exe)
+		return fmt.Sprintf("could not check 'jotaside' on PATH (%v); use %s in hook and MCP configs", err, exe)
 	}
 	fe, err := os.Stat(exe)
 	if err != nil {
 		return fmt.Sprintf("could not check this binary (%v); use %s in hook and MCP configs", err, exe)
 	}
 	if !os.SameFile(fi, fe) {
-		return fmt.Sprintf("'aside' on PATH is %s, not this binary; use %s in hook and MCP configs", found, exe)
+		return fmt.Sprintf("'jotaside' on PATH is %s, not this binary; use %s in hook and MCP configs", found, exe)
 	}
 	return ""
 }
@@ -668,7 +668,7 @@ func printSession(w io.Writer, s app.Session, jots []app.Entry, q string) {
 		fmt.Fprintln(w, "  "+cmd)
 	}
 	if app.OpenableURL(s.OpenURL) {
-		fmt.Fprintf(w, "  aside open %d\n", latest.ID)
+		fmt.Fprintf(w, "  jotaside open %d\n", latest.ID)
 	}
 }
 

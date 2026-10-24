@@ -1,8 +1,12 @@
 # Decisions
 
-Why aside is the way it is. Each entry says what was decided, why, and what
+Why jotaside is the way it is. Each entry says what was decided, why, and what
 would make it worth revisiting. Add an entry when a choice is likely to be
 questioned again; don't rewrite old ones, add a new entry that replaces them.
+
+Entries before [Renamed to jotaside](#renamed-to-jotaside-keeping-the-jot-data-names)
+use the command's name at the time, `aside`; read it as `jotaside`. Issue and
+PR numbers in them refer to [kacxx/aside-jot](https://github.com/kacxx/aside-jot).
 
 ## Not in v1, on purpose
 
@@ -400,3 +404,34 @@ was not checked.
 **Revisit if:** `gh` stops reporting visibility for a host people use (every
 `--yes` there would then need `--public`), or GitHub adds a visibility a
 public check doesn't cover.
+
+## Renamed to jotaside, keeping the jot data names
+
+**Decided:** the command, Go module, Claude Code plugin, marketplace and
+skill, MCP server name and release archives are now `jotaside`
+(2026-10-24). The code moves to a new repo, github.com/kacxx/jotaside, and
+releases start again at 0.1.0; the last `aside` release is v0.7.0 in
+kacxx/aside-jot. Kept as they were: the data directory (`…/jot/jot.db`), the
+`JOT_*` environment variables, the `>>` trigger and the word "jot" for a note.
+`jotaside setup <agent>` replaces a hook that runs `aside hook <agent>` or
+`jot hook <agent>` instead of adding a second, and when the agent's MCP config
+still has a server named `aside` or `jot` that runs this tool, it prints the
+commands that replace it (it doesn't run them, as with `--mcp`).
+
+**Why:** `aside` collided with Aside (aside.com), an AI web browser in the same
+AI-tooling space, which also owns the Homebrew cask `aside`. `jotaside` was
+free on npm, PyPI, crates.io, Homebrew and GitHub when checked (October 2026).
+This is the second rename: the first, `jot` to `aside`, was because macOS and
+the BSDs ship `/usr/bin/jot`, which shadowed the command and made hooks run the
+wrong program. Keeping the data names means no migration: the new binary
+opens the database the old one wrote.
+
+**Cost:** existing users install the new binary, rerun `jotaside setup`
+(and trust the changed hook again in Codex), re-add the MCP server and
+reinstall the plugin. `go install github.com/kacxx/aside-jot/cmd/aside@latest`
+stays at v0.7.0. The data names no longer match the command, which is why
+AGENTS.md lists it as a fact that is easy to get wrong.
+
+**Revisit if:** `jotaside` turns out to collide with another tool. Don't bring
+back `jot` or `aside` as a binary or alias, and don't rename the data
+directory or `JOT_*` without a migration.

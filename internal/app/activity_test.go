@@ -155,7 +155,7 @@ func TestActivityUnavailable(t *testing.T) {
 		e      Entry
 		reason string
 	}{
-		{"aside add", Entry{ID: 1, Source: "cli"}, "not captured in an agent session"},
+		{"jotaside add", Entry{ID: 1, Source: "cli"}, "not captured in an agent session"},
 		{"cursor", Entry{ID: 2, Source: "cursor", SessionID: "c"}, "Cursor jots have no transcript"},
 		{"codex with a path", Entry{ID: 3, Source: "codex", SessionID: "x", Metadata: meta("/does/not/matter")}, "Codex transcripts are not read yet"},
 		{"claude without a path", Entry{ID: 4, Source: "claude", SessionID: "s"}, "did not record a transcript path"},

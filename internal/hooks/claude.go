@@ -6,8 +6,8 @@ import (
 	"os"
 	"regexp"
 
-	"github.com/kacxx/aside-jot/internal/app"
-	"github.com/kacxx/aside-jot/internal/store"
+	"github.com/kacxx/jotaside/internal/app"
+	"github.com/kacxx/jotaside/internal/store"
 )
 
 // Claude Desktop sets these on the Claude Code process it starts for a
@@ -44,8 +44,8 @@ type ClaudeBlockHookSpecific struct {
 // *BlockExit.
 //
 // Cursor imports Claude Code hooks and runs them on beforeSubmitPrompt. A
-// silent reply there makes Cursor submit the prompt even when `aside hook
-// cursor` blocked it, so that event is handled exactly as `aside hook cursor`
+// silent reply there makes Cursor submit the prompt even when `jotaside hook
+// cursor` blocked it, so that event is handled exactly as `jotaside hook cursor`
 // would handle it.
 func Claude(ctx context.Context, r io.Reader, w io.Writer, open app.Opener) error {
 	return promptHook{

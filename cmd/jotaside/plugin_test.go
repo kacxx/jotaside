@@ -26,7 +26,17 @@ func TestPluginVersionsMatchRelease(t *testing.T) {
 	read(".release-please-manifest.json", &manifest)
 	release := manifest["."]
 	if release == "" {
-		t.Fatal(`.release-please-manifest.json has no "." version`)
+		// Before the first release the manifest is empty and release-please
+		// releases initial-version.
+		var cfg struct {
+			Packages map[string]struct {
+				InitialVersion string `json:"initial-version"`
+			} `json:"packages"`
+		}
+		read("release-please-config.json", &cfg)
+		if release = cfg.Packages["."].InitialVersion; release == "" {
+			t.Fatal(`.release-please-manifest.json has no "." version and release-please-config.json no initial-version`)
+		}
 	}
 
 	var plugin struct {
@@ -48,14 +58,14 @@ func TestPluginVersionsMatchRelease(t *testing.T) {
 	read(".claude-plugin/marketplace.json", &market)
 	ref, found := "", false
 	for _, p := range market.Plugins {
-		if p.Name == "aside" {
+		if p.Name == "jotaside" {
 			ref, found = p.Source.Ref, true
 		}
 	}
 	if !found {
-		t.Fatal(`marketplace.json has no "aside" plugin`)
+		t.Fatal(`marketplace.json has no "jotaside" plugin`)
 	}
 	if want := "v" + release; ref != want {
-		t.Errorf("marketplace.json aside ref = %q, want %q", ref, want)
+		t.Errorf("marketplace.json jotaside ref = %q, want %q", ref, want)
 	}
 }

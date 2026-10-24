@@ -7,10 +7,10 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kacxx/aside-jot/internal/setup"
+	"github.com/kacxx/jotaside/internal/setup"
 )
 
-// setupEnv points the agents' config at a throwaway home and pretends aside
+// setupEnv points the agents' config at a throwaway home and pretends jotaside
 // was invoked as bin.
 func setupEnv(t *testing.T) (home, bin string) {
 	t.Helper()
@@ -19,7 +19,7 @@ func setupEnv(t *testing.T) (home, bin string) {
 	t.Setenv("USERPROFILE", home)
 	t.Setenv("CLAUDE_CONFIG_DIR", "")
 	t.Setenv("CODEX_HOME", "")
-	bin, _ = filepath.Abs(filepath.Join("testdata-bin", "aside"))
+	bin, _ = filepath.Abs(filepath.Join("testdata-bin", "jotaside"))
 	old, oldOS := setupBinary, setupGOOS
 	setupBinary = func() setup.Binary {
 		return setup.Binary{Arg0: bin, TempDir: filepath.Join(home, "no-temp")}
@@ -48,7 +48,7 @@ func TestSetupClaude(t *testing.T) {
 	if _, err := os.Stat(path); err == nil {
 		t.Fatal("--dry-run wrote the file")
 	}
-	for _, want := range []string{"Dry run", q + " hook claude", "docs/cursor.md", "claude mcp add --scope user aside -- " + q + " mcp", "not run"} {
+	for _, want := range []string{"Dry run", q + " hook claude", "docs/cursor.md", "claude mcp add --scope user jotaside -- " + q + " mcp", "not run"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("dry run output lacks %q:\n%s", want, out)
 		}
@@ -102,13 +102,13 @@ func TestSetupCodexTrustReminder(t *testing.T) {
 
 	// The path changes: trusting is needed again.
 	old := setupBinary
-	other := filepath.Join(filepath.Dir(bin), "moved", "aside")
+	other := filepath.Join(filepath.Dir(bin), "moved", "jotaside")
 	setupBinary = func() setup.Binary { b := old(); b.Arg0 = other; return b }
 	out, err = runSetup(t, "codex", "--mcp")
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"Updated", "replaced: " + setup.Quote(bin, false) + " hook codex", "trust it", "again", "codex mcp add aside -- " + setup.Quote(other, false) + " mcp"} {
+	for _, want := range []string{"Updated", "replaced: " + setup.Quote(bin, false) + " hook codex", "trust it", "again", "codex mcp add jotaside -- " + setup.Quote(other, false) + " mcp"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("update output lacks %q:\n%s", want, out)
 		}
@@ -125,7 +125,7 @@ func TestSetupCodexTrustReminder(t *testing.T) {
 
 func TestSetupQuotesPathWithSpace(t *testing.T) {
 	home, _ := setupEnv(t)
-	spaced := filepath.Join(home, "John Smith", "go", "bin", "aside")
+	spaced := filepath.Join(home, "John Smith", "go", "bin", "jotaside")
 	setupBinary = func() setup.Binary { return setup.Binary{Arg0: spaced, TempDir: filepath.Join(home, "no-temp")} }
 	out, err := runSetup(t, "claude", "--mcp")
 	if err != nil {
@@ -154,7 +154,7 @@ func TestSetupDryRunHidesRestOfFile(t *testing.T) {
 
 func TestSetupRenamedBinaryIsIdempotent(t *testing.T) {
 	home, _ := setupEnv(t)
-	dev := filepath.Join(home, "bin", "aside-dev")
+	dev := filepath.Join(home, "bin", "jotaside-dev")
 	if err := os.MkdirAll(filepath.Dir(dev), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -189,7 +189,7 @@ func TestSetupErrors(t *testing.T) {
 	home, _ := setupEnv(t)
 	for _, args := range [][]string{{}, {"vim"}, {"claude", "codex"}, {"claude", "--nope"}} {
 		if _, err := runSetup(t, args...); err == nil {
-			t.Errorf("aside setup %v: want an error", args)
+			t.Errorf("jotaside setup %v: want an error", args)
 		}
 	}
 	// A config that doesn't parse is left alone.
@@ -207,8 +207,74 @@ func TestSetupErrors(t *testing.T) {
 		t.Errorf("file changed: %q", b)
 	}
 	// A temporary binary is refused.
-	setupBinary = func() setup.Binary { return setup.Binary{Arg0: filepath.Join(os.TempDir(), "go-build1", "aside")} }
+	setupBinary = func() setup.Binary { return setup.Binary{Arg0: filepath.Join(os.TempDir(), "go-build1", "jotaside")} }
 	if _, err := runSetup(t, "claude"); err == nil || !strings.Contains(err.Error(), "go install") {
 		t.Errorf("err = %v, want a go install hint", err)
+	}
+}
+
+// Upgrading from aside (or jot): setup replaces the old hook with exactly one
+// jotaside hook, keeps everything else, writes a backup, and says how to
+// replace an MCP server still registered under the old name.
+func TestSetupReplacesPreviousNames(t *testing.T) {
+	for _, agent := range []string{"claude", "codex"} {
+		t.Run(agent, func(t *testing.T) {
+			home, bin := setupEnv(t)
+			var path, mcpPath, mcpCfg, remove string
+			if agent == "claude" {
+				path = filepath.Join(home, ".claude", "settings.json")
+				mcpPath = filepath.Join(home, ".claude.json")
+				mcpCfg = `{"mcpServers":{"aside":{"command":"/Users/x/go/bin/aside","args":["mcp"]}}}`
+				remove = "claude mcp remove --scope user aside"
+			} else {
+				path = filepath.Join(home, ".codex", "hooks.json")
+				mcpPath = filepath.Join(home, ".codex", "config.toml")
+				mcpCfg = "[mcp_servers.aside]\ncommand = \"/Users/x/go/bin/aside\"\nargs = [\"mcp\"]\n"
+				remove = "codex mcp remove aside"
+			}
+			old := `{"model":"x","hooks":{"UserPromptSubmit":[
+  {"hooks":[{"type":"command","command":"/usr/local/bin/other-tool prompt"}]},
+  {"hooks":[{"type":"command","command":"/x/aside hook ` + agent + `"}]},
+  {"hooks":[{"type":"command","command":"jot hook ` + agent + `"}]}]}}`
+			if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(path, []byte(old), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(mcpPath, []byte(mcpCfg), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			out, err := runSetup(t, agent)
+			if err != nil {
+				t.Fatal(err)
+			}
+			b, _ := os.ReadFile(path)
+			got := string(b)
+			q := setup.Quote(bin, false)
+			if strings.Count(got, " hook "+agent) != 1 || !strings.Contains(got, q+" hook "+agent) ||
+				!strings.Contains(got, "/usr/local/bin/other-tool prompt") || !strings.Contains(got, `"model": "x"`) ||
+				strings.Contains(got, "/x/aside") || strings.Contains(got, `"jot hook`) {
+				t.Errorf("config:\n%s", got)
+			}
+			if m, _ := filepath.Glob(path + ".bak-*"); len(m) != 1 {
+				t.Errorf("want one backup, got %v", m)
+			} else if bak, _ := os.ReadFile(m[0]); string(bak) != old {
+				t.Errorf("backup is not the old file:\n%s", bak)
+			}
+			for _, want := range []string{"replaced: /x/aside hook " + agent, "removed 1 duplicate jotaside entry",
+				mcpPath + " registers the jot MCP server under an old name", "aside (runs /Users/x/go/bin/aside)", remove, "jotaside -- " + q + " mcp"} {
+				if !strings.Contains(out, want) {
+					t.Errorf("output lacks %q:\n%s", want, out)
+				}
+			}
+			if strings.Contains(out, "To give") {
+				t.Errorf("printed both the replace and the plain add command:\n%s", out)
+			}
+			if b, _ := os.ReadFile(mcpPath); string(b) != mcpCfg {
+				t.Errorf("setup changed the MCP config:\n%s", b)
+			}
+		})
 	}
 }

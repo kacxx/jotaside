@@ -9,8 +9,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kacxx/aside-jot/internal/gitctx"
-	"github.com/kacxx/aside-jot/internal/store"
+	"github.com/kacxx/jotaside/internal/gitctx"
+	"github.com/kacxx/jotaside/internal/store"
 )
 
 // Entry is a captured thought.

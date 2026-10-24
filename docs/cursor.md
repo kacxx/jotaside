@@ -1,12 +1,12 @@
 # Cursor (not supported)
 
-> **aside does not work with Cursor, and Cursor support is paused.** The hook
+> **jotaside does not work with Cursor, and Cursor support is paused.** The hook
 > saves the jot and blocks that turn, but Cursor keeps the blocked prompt in the
 > chat and sends it to the model with your next message there
 > ([#25](https://github.com/kacxx/aside-jot/issues/25)). This is a
 > [known Cursor bug](https://forum.cursor.com/t/prompt-blocked-by-a-beforesubmitprompt-hook-is-still-sent-to-the-model-with-the-next-message/173565),
-> and aside can't work around it: the hook only decides whether a prompt is
-> sent now. Don't rely on `>>` in Cursor; jot from a terminal with `aside add`
+> and jotaside can't work around it: the hook only decides whether a prompt is
+> sent now. Don't rely on `>>` in Cursor; jot from a terminal with `jotaside add`
 > instead. Cursor also runs the Claude Code hook from
 > `~/.claude/settings.json`, so the same applies if only that one is installed.
 >
@@ -18,7 +18,7 @@
 > messages sent after it. Starting a new chat also avoids the leak, since the
 > jot is sent with the next message in the same chat.
 >
-> `aside hook cursor` stays in the binary, and the setup and test notes below
+> `jotaside hook cursor` stays in the binary, and the setup and test notes below
 > are kept for when Cursor fixes the bug.
 
 Add to `~/.cursor/hooks.json` (or `<project>/.cursor/hooks.json`):
@@ -28,7 +28,7 @@ Add to `~/.cursor/hooks.json` (or `<project>/.cursor/hooks.json`):
   "version": 1,
   "hooks": {
     "beforeSubmitPrompt": [
-      { "command": "/Users/you/go/bin/aside hook cursor" }
+      { "command": "/Users/you/go/bin/jotaside hook cursor" }
     ]
   }
 }
@@ -40,9 +40,9 @@ Cursor also loads Claude Code user hooks from `~/.claude/settings.json` and runs
 them on `beforeSubmitPrompt` next to its own, sending them
 `hook_event_name: "beforeSubmitPrompt"`. On 3.23.12, with both hooks installed
 and the Claude hook printing nothing, the prompt reached the model even though
-`aside hook cursor` replied `{"continue":false}`. With the Claude hook removed,
+`jotaside hook cursor` replied `{"continue":false}`. With the Claude hook removed,
 the jot was blocked ([#23](https://github.com/kacxx/aside-jot/issues/23)). So on
-that event `aside hook claude` now replies exactly as `aside hook cursor` does:
+that event `jotaside hook claude` now replies exactly as `jotaside hook cursor` does:
 it blocks jots and answers `{"continue":true}` to every other prompt. Either
 hook is enough in Cursor, and both together are safe. If both run on one
 prompt, the jot is saved once, keyed on Cursor's `generation_id`. Only the hook
@@ -53,7 +53,7 @@ and check you get `✓ Jotted #N` rather than a model reply.
 On a jot the hook returns `{"continue":false,"user_message":"✓ Jotted #N"}`.
 Every other prompt gets `{"continue":true}`. The conversation id is stored as
 the session. With a single workspace root, that root is used as the working
-directory. With several roots, aside doesn't guess: it records all of them in
+directory. With several roots, jotaside doesn't guess: it records all of them in
 the entry's metadata and leaves the git fields empty. A multi-root window is a
 normal Cursor layout, and every jot captured there has no repo, branch, or
 commit.
@@ -61,19 +61,19 @@ commit.
 Verified with Cursor 3.22.12 and, after a restart, 3.23.12, on macOS. This was
 before the fix for #23, while the Claude hook was silent on `beforeSubmitPrompt`:
 
-- An ordinary prompt ran `aside hook cursor` from `~/.cursor/hooks.json` and
+- An ordinary prompt ran `jotaside hook cursor` from `~/.cursor/hooks.json` and
   returned `{"continue":true}` in 16ms, and the model received it.
 - A `>>` prompt sent while only the Claude hook was installed ran as
-  `aside hook claude`, produced no output, and reached the model.
+  `jotaside hook claude`, produced no output, and reached the model.
 - Replayed with `hook_event_name: "beforeSubmitPrompt"`: a `>>` prompt returns
   `{"continue":false,"user_message":"✓ Jotted #N"}`. One workspace root records
   repo, branch, and commit. Two or more leave the git fields empty and store
   the roots in metadata.
 - `>>x`, a leading space, and `>>` mid-sentence pass through.
 - Live on 3.23.12 with both hooks installed, `>> hello from cursor` ran
-  `aside hook cursor`, which returned
+  `jotaside hook cursor`, which returned
   `{"continue":false,"user_message":"✓ Jotted #9"}`. The imported Claude hook
-  produced no output, and the prompt still reached the model. `aside show 9`
+  produced no output, and the prompt still reached the model. `jotaside show 9`
   has `source: cursor`, the conversation id as the session, no repo, branch,
   or commit, and the workspace roots in metadata.
 - Live on 3.23.12 with the Claude hook removed, `>> test` returned
@@ -86,9 +86,9 @@ blocked and saved once in each setup:
   logged "Merged 2 valid response(s)". That build showed `✓ Jotted #13` twice.
 - Both hooks again, with the hook that finds the jot already saved replying
   without a message: jot #17, and `✓ Jotted #17` appeared once.
-- Only `aside hook claude`, imported by Cursor: jot #14, saved with
+- Only `jotaside hook claude`, imported by Cursor: jot #14, saved with
   `source: cursor`.
-- Only `aside hook cursor`: jot #15.
+- Only `jotaside hook cursor`: jot #15.
 - After the both-hooks and Claude-only runs, the next message in that chat sent
   the blocked jot to the model with it
   ([#25](https://github.com/kacxx/aside-jot/issues/25)).

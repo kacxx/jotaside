@@ -1,5 +1,9 @@
 # Follow-up jots when closing a jot (#95): proposal
 
+> Written before the tool was renamed `jotaside` (2026-10-24). Names here are
+> the ones of the time (the `jot` or `aside` command, repo kacxx/aside-jot), and
+> issue and PR numbers refer to [kacxx/aside-jot](https://github.com/kacxx/aside-jot).
+
 Status: **decided**. Sliced into #97, #98, #99 and #102 (D9's CLI fix, split out of #98).
 Source: #95
 

@@ -27,7 +27,7 @@ import (
 
 	"github.com/dustin/go-humanize"
 
-	"github.com/kacxx/aside-jot/internal/app"
+	"github.com/kacxx/jotaside/internal/app"
 )
 
 // maxPayload caps how much of a hook payload is parsed in memory. A variable

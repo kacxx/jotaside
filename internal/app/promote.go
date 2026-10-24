@@ -13,7 +13,7 @@ import (
 	"time"
 	"unicode"
 
-	"github.com/kacxx/aside-jot/internal/store"
+	"github.com/kacxx/jotaside/internal/store"
 )
 
 // Runner runs an external command. Promote runs git and gh through it, so

@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kacxx/aside-jot/internal/app"
+	"github.com/kacxx/jotaside/internal/app"
 )
 
 func TestOpenCLI(t *testing.T) {
@@ -76,7 +76,7 @@ func TestOpenCLI(t *testing.T) {
 	}
 }
 
-// A Claude Desktop jot goes through aside open to its continue link, and an
+// A Claude Desktop jot goes through jotaside open to its continue link, and an
 // archived session gets none.
 func TestOpenCLIDesktop(t *testing.T) {
 	t.Setenv("JOT_DB", filepath.Join(t.TempDir(), "jot.db"))
@@ -151,11 +151,11 @@ func TestOpenCLIDesktop(t *testing.T) {
 	if err := run([]string{"find", "desktop jot"}, strings.NewReader(""), &out); err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out.String(), "\n  aside open 3\n") {
+	if !strings.Contains(out.String(), "\n  jotaside open 3\n") {
 		t.Fatalf("find output has no open command for the newest jot:\n%s", out.String())
 	}
 	out.Reset()
-	if err := run([]string{"sessions"}, strings.NewReader(""), &out); err != nil || !strings.Contains(out.String(), "\n  aside open 3\n") {
+	if err := run([]string{"sessions"}, strings.NewReader(""), &out); err != nil || !strings.Contains(out.String(), "\n  jotaside open 3\n") {
 		t.Fatalf("sessions has no open command for the newest jot: err=%v\n%s", err, out.String())
 	}
 }

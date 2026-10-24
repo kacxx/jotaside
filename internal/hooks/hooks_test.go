@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kacxx/aside-jot/internal/app"
-	"github.com/kacxx/aside-jot/internal/gitctx"
-	"github.com/kacxx/aside-jot/internal/store"
+	"github.com/kacxx/jotaside/internal/app"
+	"github.com/kacxx/jotaside/internal/gitctx"
+	"github.com/kacxx/jotaside/internal/store"
 )
 
 // TestMain raises the git time budget: these tests check the git fields of a
@@ -571,7 +571,7 @@ func TestWrongTypedFieldsStillBlock(t *testing.T) {
 
 // --- Claude hook imported by Cursor ---
 
-// runClaudeAsCursor runs `aside hook claude` on a Cursor payload, as Cursor
+// runClaudeAsCursor runs `jotaside hook claude` on a Cursor payload, as Cursor
 // does when it imports the hook from ~/.claude/settings.json.
 func runClaudeAsCursor(t *testing.T, payload []byte, open app.Opener) (string, CursorOutput) {
 	t.Helper()
@@ -597,7 +597,7 @@ func TestClaudeOnCursorEventPassThrough(t *testing.T) {
 	}
 }
 
-// Issue #23: a silent Claude hook made Cursor submit a jot that `aside hook
+// Issue #23: a silent Claude hook made Cursor submit a jot that `jotaside hook
 // cursor` had blocked. On beforeSubmitPrompt it must block in Cursor format.
 func TestClaudeOnCursorEventBlocks(t *testing.T) {
 	t.Setenv(envHostSessionID, "local_7d6831ca-0cab-461d-8d71-d3f9f9aeaf3c")

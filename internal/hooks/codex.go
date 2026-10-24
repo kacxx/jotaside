@@ -4,8 +4,8 @@ import (
 	"context"
 	"io"
 
-	"github.com/kacxx/aside-jot/internal/app"
-	"github.com/kacxx/aside-jot/internal/store"
+	"github.com/kacxx/jotaside/internal/app"
+	"github.com/kacxx/jotaside/internal/store"
 )
 
 // CodexBlock is the Codex UserPromptSubmit output that blocks a prompt; the

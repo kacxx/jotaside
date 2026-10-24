@@ -7,14 +7,15 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 )
 
-// TestMain lets the test binary stand in for aside in TestQuotedCommandRuns.
+// TestMain lets the test binary stand in for jotaside in TestQuotedCommandRuns.
 func TestMain(m *testing.M) {
-	if os.Getenv("ASIDE_SETUP_HELPER") == "1" {
+	if os.Getenv("JOTASIDE_SETUP_HELPER") == "1" {
 		os.Stdout.WriteString("helper ran: " + strings.Join(os.Args[1:], " "))
 		os.Exit(0)
 	}
@@ -30,7 +31,7 @@ func merge(t *testing.T, in string, h Hook) (string, Change) {
 	return string(out), ch
 }
 
-var claude = Hook{Agent: "claude", Command: "/bin/aside hook claude"}
+var claude = Hook{Agent: "claude", Command: "/bin/jotaside hook claude"}
 
 func TestMergeEmpty(t *testing.T) {
 	want := `{
@@ -40,7 +41,7 @@ func TestMergeEmpty(t *testing.T) {
         "hooks": [
           {
             "type": "command",
-            "command": "/bin/aside hook claude"
+            "command": "/bin/jotaside hook claude"
           }
         ]
       }
@@ -74,7 +75,7 @@ func TestMergeKeepsOtherContentAndOrder(t *testing.T) {
 		t.Fatalf("change = %+v", ch)
 	}
 	// Existing keys keep their order, and the other hook is untouched.
-	order := []string{`"z": 1.50`, `"permissions"`, `"hooks"`, `"Stop"`, `"UserPromptSubmit"`, `"other-tool"`, `/bin/aside hook claude`, `"A"`, `"a": "<&>"`}
+	order := []string{`"z": 1.50`, `"permissions"`, `"hooks"`, `"Stop"`, `"UserPromptSubmit"`, `"other-tool"`, `/bin/jotaside hook claude`, `"A"`, `"a": "<&>"`}
 	last := -1
 	for _, s := range order {
 		i := strings.Index(got, s)
@@ -83,40 +84,44 @@ func TestMergeKeepsOtherContentAndOrder(t *testing.T) {
 		}
 		last = i
 	}
-	if strings.Count(got, "aside hook") != 1 {
-		t.Errorf("want one aside hook:\n%s", got)
+	if strings.Count(got, "jotaside hook") != 1 {
+		t.Errorf("want one jotaside hook:\n%s", got)
 	}
 }
 
 func TestMergeUpdatesInPlace(t *testing.T) {
-	in := `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"/old/path/aside hook claude","timeout":5}]}]}}`
+	in := `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"/old/path/jotaside hook claude","timeout":5}]}]}}`
 	got, ch := merge(t, in, claude)
-	if ch.Kind != "updated" || len(ch.Replaced) != 1 || ch.Replaced[0] != "/old/path/aside hook claude" {
+	if ch.Kind != "updated" || len(ch.Replaced) != 1 || ch.Replaced[0] != "/old/path/jotaside hook claude" {
 		t.Fatalf("change = %+v", ch)
 	}
-	if strings.Count(got, "aside hook") != 1 || strings.Contains(got, "/old/path") || !strings.Contains(got, `"timeout": 5`) {
+	if strings.Count(got, "jotaside hook") != 1 || strings.Contains(got, "/old/path") || !strings.Contains(got, `"timeout": 5`) {
 		t.Errorf("got:\n%s", got)
 	}
 }
 
 func TestMergeUnchanged(t *testing.T) {
-	in := `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"/bin/aside hook claude"}]}]}}`
+	in := `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"/bin/jotaside hook claude"}]}]}}`
 	_, ch := merge(t, in, claude)
 	if ch.Kind != "unchanged" {
 		t.Errorf("change = %+v", ch)
 	}
 }
 
-func TestMergeReplacesOldJotEntries(t *testing.T) {
+func TestMergeReplacesPreviousNames(t *testing.T) {
 	for _, agent := range []string{"claude", "codex"} {
 		for _, old := range []string{
 			"jot hook " + agent,
 			"/Users/x/go/bin/jot hook " + agent,
 			`"C:\Users\John Smith\go\bin\jot.exe" hook ` + agent,
+			"aside hook " + agent,
+			"/Users/x/go/bin/aside hook " + agent,
+			`"C:\Users\John Smith\go\bin\aside.exe" hook ` + agent,
 			"'/o'\\''brien/go/bin/aside' hook " + agent,
+			"'/o'\\''brien/go/bin/jotaside' hook " + agent,
 		} {
 			in := `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":` + string(jsonString(old)) + `}]}]}}`
-			h := Hook{Agent: agent, Command: "/bin/aside hook " + agent}
+			h := Hook{Agent: agent, Command: "/bin/jotaside hook " + agent}
 			got, ch := merge(t, in, h)
 			if ch.Kind != "updated" || strings.Count(got, " hook ") != 1 || !strings.Contains(got, h.Command) {
 				t.Errorf("%q: change %+v, got:\n%s", old, ch, got)
@@ -129,28 +134,77 @@ func TestMergeLeavesOtherAgentsAndPrograms(t *testing.T) {
 	// A codex hook is not replaced by claude's, and a program that only
 	// looks similar is left alone.
 	in := `{"hooks":{"UserPromptSubmit":[{"hooks":[
-	  {"type":"command","command":"/bin/aside hook codex"},
+	  {"type":"command","command":"/bin/jotaside hook codex"},
 	  {"type":"command","command":"/bin/asides hook claude"},
-	  {"type":"command","command":"/bin/aside hook claude --extra"}]}]}}`
+	  {"type":"command","command":"/bin/jotasides hook claude"},
+	  {"type":"command","command":"/bin/jotaside hook claude --extra"}]}]}}`
 	got, ch := merge(t, in, claude)
-	if ch.Kind != "added" || strings.Count(got, `"command": "`) != 4 {
+	if ch.Kind != "added" || strings.Count(got, `"command": "`) != 5 {
 		t.Errorf("change %+v, got:\n%s", ch, got)
+	}
+}
+
+// A config from before the renames, with hooks from both earlier names and
+// someone else's hooks, ends up with exactly one jotaside hook and the other
+// hooks as they were.
+func TestMergeReplacesAsideAndJotWithOneHook(t *testing.T) {
+	for _, agent := range []string{"claude", "codex"} {
+		in := `{"hooks":{
+	  "Stop":[{"hooks":[{"type":"command","command":"/x/aside hook ` + agent + `"}]}],
+	  "UserPromptSubmit":[
+	    {"hooks":[{"type":"command","command":"/usr/local/bin/other-tool prompt"}]},
+	    {"hooks":[{"type":"command","command":"/x/aside hook ` + agent + `","timeout":5}]},
+	    {"matcher":"","hooks":[{"type":"command","command":"jot hook ` + agent + `"},{"type":"command","command":"keep-me"}]}]}}`
+		h := Hook{Agent: agent, Command: "/new/bin/jotaside hook " + agent}
+		got, ch := merge(t, in, h)
+		if ch.Kind != "updated" || ch.Removed != 1 || len(ch.Replaced) != 1 || ch.Replaced[0] != "/x/aside hook "+agent {
+			t.Errorf("%s: change %+v", agent, ch)
+		}
+		var cfg struct {
+			Hooks map[string][]struct {
+				Matcher *string `json:"matcher"`
+				Hooks   []struct {
+					Command string `json:"command"`
+					Timeout int    `json:"timeout"`
+				} `json:"hooks"`
+			} `json:"hooks"`
+		}
+		if err := json.Unmarshal([]byte(got), &cfg); err != nil {
+			t.Fatal(err)
+		}
+		var cmds []string
+		for _, g := range cfg.Hooks[event] {
+			for _, hk := range g.Hooks {
+				cmds = append(cmds, hk.Command)
+			}
+		}
+		want := []string{"/usr/local/bin/other-tool prompt", h.Command, "keep-me"}
+		if !slices.Equal(cmds, want) {
+			t.Errorf("%s: UserPromptSubmit commands = %q, want %q\n%s", agent, cmds, want, got)
+		}
+		if g := cfg.Hooks[event][1]; g.Hooks[0].Timeout != 5 {
+			t.Errorf("%s: the replaced entry lost its timeout:\n%s", agent, got)
+		}
+		// Other events are not setup's business, whatever they run.
+		if st := cfg.Hooks["Stop"]; len(st) != 1 || st[0].Hooks[0].Command != "/x/aside hook "+agent {
+			t.Errorf("%s: Stop hooks changed:\n%s", agent, got)
+		}
 	}
 }
 
 func TestMergeRemovesDuplicates(t *testing.T) {
 	in := `{"hooks":{"UserPromptSubmit":[
 	  {"hooks":[{"type":"command","command":"jot hook claude"}]},
-	  {"hooks":[{"type":"command","command":"/x/aside hook claude"},{"type":"command","command":"keep"}]}]}}`
+	  {"hooks":[{"type":"command","command":"/x/jotaside hook claude"},{"type":"command","command":"keep"}]}]}}`
 	got, ch := merge(t, in, claude)
 	if ch.Kind != "updated" || ch.Removed != 1 {
 		t.Fatalf("change %+v", ch)
 	}
-	if strings.Count(got, "aside hook") != 1 || !strings.Contains(got, `"keep"`) {
+	if strings.Count(got, "jotaside hook") != 1 || !strings.Contains(got, `"keep"`) {
 		t.Errorf("got:\n%s", got)
 	}
 	// The first match is updated in place; the later one is removed.
-	if strings.Index(got, "/bin/aside hook claude") > strings.Index(got, `"keep"`) {
+	if strings.Index(got, "/bin/jotaside hook claude") > strings.Index(got, `"keep"`) {
 		t.Errorf("updated entry should stay first:\n%s", got)
 	}
 	if strings.Contains(got, "jot hook") {
@@ -159,15 +213,15 @@ func TestMergeRemovesDuplicates(t *testing.T) {
 }
 
 func TestMergeCodexWindows(t *testing.T) {
-	h := Hook{Agent: "codex", Command: "C:/bin/aside.exe hook codex", Windows: true}
+	h := Hook{Agent: "codex", Command: "C:/bin/jotaside.exe hook codex", Windows: true}
 	got, _ := merge(t, "{}", h)
-	if !strings.Contains(got, `"commandWindows": "C:/bin/aside.exe hook codex"`) || !strings.Contains(got, `"command": "C:/bin/aside.exe hook codex"`) {
+	if !strings.Contains(got, `"commandWindows": "C:/bin/jotaside.exe hook codex"`) || !strings.Contains(got, `"command": "C:/bin/jotaside.exe hook codex"`) {
 		t.Errorf("got:\n%s", got)
 	}
 	// On another platform an existing commandWindows is left alone.
-	in := `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"/old/aside hook codex","commandWindows":"C:/keep/aside.exe hook codex"}]}]}}`
-	got, ch := merge(t, in, Hook{Agent: "codex", Command: "/new/aside hook codex"})
-	if ch.Kind != "updated" || !strings.Contains(got, "C:/keep/aside.exe") || !strings.Contains(got, "/new/aside hook codex") {
+	in := `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"/old/jotaside hook codex","commandWindows":"C:/keep/jotaside.exe hook codex"}]}]}}`
+	got, ch := merge(t, in, Hook{Agent: "codex", Command: "/new/jotaside hook codex"})
+	if ch.Kind != "updated" || !strings.Contains(got, "C:/keep/jotaside.exe") || !strings.Contains(got, "/new/jotaside hook codex") {
 		t.Errorf("change %+v, got:\n%s", ch, got)
 	}
 }
@@ -208,7 +262,7 @@ func TestInstall(t *testing.T) {
 
 	// An existing one is backed up first, with its previous contents.
 	before, _ := os.ReadFile(path)
-	h2 := Hook{Agent: "claude", Command: "/other/aside hook claude"}
+	h2 := Hook{Agent: "claude", Command: "/other/jotaside hook claude"}
 	if res, err = Install(path, h2, false, now); err != nil || !res.Wrote {
 		t.Fatalf("update: %+v, %v", res, err)
 	}
@@ -219,7 +273,7 @@ func TestInstall(t *testing.T) {
 		t.Errorf("backup holds %q, want %q", b, before)
 	}
 	// A second backup in the same second doesn't overwrite the first.
-	h3 := Hook{Agent: "claude", Command: "/third/aside hook claude"}
+	h3 := Hook{Agent: "claude", Command: "/third/jotaside hook claude"}
 	res2, err := Install(path, h3, false, now)
 	if err != nil || res2.Backup == res.Backup {
 		t.Fatalf("second backup: %+v, %v", res2, err)
@@ -263,7 +317,7 @@ func TestInstallThroughSymlink(t *testing.T) {
 	if fi, _ := os.Lstat(link); fi.Mode()&os.ModeSymlink == 0 {
 		t.Error("the symlink was replaced")
 	}
-	if b, _ := os.ReadFile(real); !strings.Contains(string(b), "aside hook") {
+	if b, _ := os.ReadFile(real); !strings.Contains(string(b), "jotaside hook") {
 		t.Errorf("target not updated: %s", b)
 	}
 	if filepath.Dir(res.Backup) != dir {
@@ -304,11 +358,11 @@ func TestQuote(t *testing.T) {
 		windows bool
 		want    string
 	}{
-		{"/Users/you/go/bin/aside", false, "/Users/you/go/bin/aside"},
-		{"/Users/John Smith/go/bin/aside", false, "'/Users/John Smith/go/bin/aside'"},
-		{"/o'brien/aside", false, `'/o'\''brien/aside'`},
-		{`C:\Users\you\go\bin\aside.exe`, true, "C:/Users/you/go/bin/aside.exe"},
-		{`C:\Users\John Smith\go\bin\aside.exe`, true, `"C:/Users/John Smith/go/bin/aside.exe"`},
+		{"/Users/you/go/bin/jotaside", false, "/Users/you/go/bin/jotaside"},
+		{"/Users/John Smith/go/bin/jotaside", false, "'/Users/John Smith/go/bin/jotaside'"},
+		{"/o'brien/jotaside", false, `'/o'\''brien/jotaside'`},
+		{`C:\Users\you\go\bin\jotaside.exe`, true, "C:/Users/you/go/bin/jotaside.exe"},
+		{`C:\Users\John Smith\go\bin\jotaside.exe`, true, `"C:/Users/John Smith/go/bin/jotaside.exe"`},
 	} {
 		if got := Quote(c.path, c.windows); got != c.want {
 			t.Errorf("Quote(%q, %v) = %s, want %s", c.path, c.windows, got, c.want)
@@ -326,7 +380,7 @@ func TestQuotedCommandRuns(t *testing.T) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	name := "aside"
+	name := "jotaside"
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
@@ -353,7 +407,7 @@ func TestQuotedCommandRuns(t *testing.T) {
 		t.Fatalf("path with a space was not quoted: %s", cmd)
 	}
 	c := exec.Command(sh, "-c", cmd)
-	c.Env = append(os.Environ(), "ASIDE_SETUP_HELPER=1")
+	c.Env = append(os.Environ(), "JOTASIDE_SETUP_HELPER=1")
 	got, err := c.CombinedOutput()
 	if err != nil || string(got) != "helper ran: hook claude" {
 		t.Fatalf("running %s: %q, %v", cmd, got, err)
@@ -382,7 +436,7 @@ func must(t *testing.T, err error) {
 
 func TestMergeRecognisesOwnBinaryUnderAnyName(t *testing.T) {
 	dir := t.TempDir()
-	bin := filepath.Join(dir, "aside53")
+	bin := filepath.Join(dir, "jotaside53")
 	must(t, os.WriteFile(bin, []byte("x"), 0o755))
 	h := Hook{Agent: "claude", Command: Quote(bin, false) + " hook claude", Binary: bin}
 	cfg := "{}"
@@ -395,7 +449,7 @@ func TestMergeRecognisesOwnBinaryUnderAnyName(t *testing.T) {
 		cfg = got
 	}
 	// Another name for the same file is the same binary, too.
-	link := filepath.Join(dir, "aside-link")
+	link := filepath.Join(dir, "jotaside-link")
 	if err := os.Link(bin, link); err != nil {
 		t.Skip("hard links unavailable:", err)
 	}
@@ -407,13 +461,13 @@ func TestMergeRecognisesOwnBinaryUnderAnyName(t *testing.T) {
 }
 
 func TestMergeKeepsGroupWithOtherKeys(t *testing.T) {
-	in := `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"/x/aside hook claude"},{"type":"command","command":"/y/aside hook claude"}],"note":"mine"}]}}`
+	in := `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"/x/jotaside hook claude"},{"type":"command","command":"/y/jotaside hook claude"}],"note":"mine"}]}}`
 	got, ch := merge(t, in, claude)
 	if ch.Removed != 1 || !strings.Contains(got, `"note": "mine"`) {
 		t.Errorf("%+v\n%s", ch, got)
 	}
 	// Emptied by removal: the group goes only if nothing else is in it.
-	in = `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"/y/aside hook claude"}],"note":"mine"},{"matcher":"","hooks":[{"type":"command","command":"/x/aside hook claude"}]}]}}`
+	in = `{"hooks":{"UserPromptSubmit":[{"hooks":[{"type":"command","command":"/y/jotaside hook claude"}],"note":"mine"},{"matcher":"","hooks":[{"type":"command","command":"/x/jotaside hook claude"}]}]}}`
 	got, _ = merge(t, in, claude)
 	if !strings.Contains(got, `"note": "mine"`) {
 		t.Errorf("group with another key was dropped:\n%s", got)
@@ -426,7 +480,100 @@ func TestSectionShowsOnlyHooks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(sec), "secret") || strings.Contains(string(sec), "Stop") || !strings.Contains(string(sec), "aside hook claude") {
+	if strings.Contains(string(sec), "secret") || strings.Contains(string(sec), "Stop") || !strings.Contains(string(sec), "jotaside hook claude") {
 		t.Errorf("section:\n%s", sec)
+	}
+}
+
+func TestMCPConfigPath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
+	t.Setenv("CLAUDE_CONFIG_DIR", "")
+	t.Setenv("CODEX_HOME", "")
+	for agent, want := range map[string]string{
+		"claude": filepath.Join(home, ".claude.json"),
+		"codex":  filepath.Join(home, ".codex", "config.toml"),
+	} {
+		if got, err := MCPConfigPath(agent); err != nil || got != want {
+			t.Errorf("%s: %q %v, want %q", agent, got, err, want)
+		}
+	}
+	t.Setenv("CLAUDE_CONFIG_DIR", "/cfg/claude")
+	t.Setenv("CODEX_HOME", "/cfg/codex")
+	if got, _ := MCPConfigPath("claude"); got != filepath.Join("/cfg/claude", ".claude.json") {
+		t.Errorf("claude with CLAUDE_CONFIG_DIR: %q", got)
+	}
+	if got, _ := MCPConfigPath("codex"); got != filepath.Join("/cfg/codex", "config.toml") {
+		t.Errorf("codex with CODEX_HOME: %q", got)
+	}
+	if _, err := MCPConfigPath("cursor"); err == nil {
+		t.Error("cursor: want an error")
+	}
+}
+
+func TestFindOldMCPServers(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, s string) string {
+		p := filepath.Join(dir, name)
+		must(t, os.WriteFile(p, []byte(s), 0o600))
+		return p
+	}
+
+	claudeCfg := write("claude.json", `{
+  "numStartups": 3,
+  "mcpServers": {
+    "aside": {"type": "stdio", "command": "/Users/you/go/bin/aside", "args": ["mcp"]},
+    "jot": {"command": "C:\\Users\\you\\go\\bin\\jot.exe", "args": ["mcp"]},
+    "jotaside": {"command": "/Users/you/go/bin/jotaside", "args": ["mcp"]},
+    "other": {"command": "/usr/bin/other"}
+  },
+  "projects": {"/p": {"mcpServers": {"aside": {"command": "/Users/you/go/bin/aside"}}}}
+}`)
+	got := FindOldMCPServers("claude", claudeCfg)
+	want := []OldMCPServer{{"jot", `C:\Users\you\go\bin\jot.exe`}, {"aside", "/Users/you/go/bin/aside"}}
+	if !slices.Equal(got, want) {
+		t.Errorf("claude: %+v, want %+v", got, want)
+	}
+
+	// A server called aside that runs something else (the Aside browser,
+	// say) isn't ours.
+	if got := FindOldMCPServers("claude", write("other.json", `{"mcpServers":{"aside":{"command":"npx","args":["aside-mcp"]}}}`)); len(got) != 0 {
+		t.Errorf("someone else's aside server: %+v", got)
+	}
+
+	codexCfg := write("config.toml", `model = "o4"
+
+[mcp_servers.aside]
+command = "/Users/you/go/bin/aside" # set by codex mcp add
+args = ["mcp"]
+
+[mcp_servers.aside.env]
+JOT_DB = "/Users/you/jot.db"
+
+[mcp_servers."jot"]
+args = ["mcp"]
+command = 'C:\Users\you\go\bin\jot.exe' # literal string
+
+[mcp_servers.jotaside]
+command = "/Users/you/go/bin/jotaside"
+
+[profiles.x]
+command = "/Users/you/go/bin/aside"
+`)
+	got = FindOldMCPServers("codex", codexCfg)
+	want = []OldMCPServer{{"jot", `C:\Users\you\go\bin\jot.exe`}, {"aside", "/Users/you/go/bin/aside"}}
+	if !slices.Equal(got, want) {
+		t.Errorf("codex: %+v, want %+v", got, want)
+	}
+
+	if got := FindOldMCPServers("codex", write("new.toml", "[mcp_servers.jotaside]\ncommand = \"/bin/jotaside\"\n")); len(got) != 0 {
+		t.Errorf("only the new name: %+v", got)
+	}
+	if got := FindOldMCPServers("claude", filepath.Join(dir, "missing.json")); got != nil {
+		t.Errorf("missing file: %+v", got)
+	}
+	if got := FindOldMCPServers("claude", write("bad.json", "{not json")); got != nil {
+		t.Errorf("unparseable file: %+v", got)
 	}
 }

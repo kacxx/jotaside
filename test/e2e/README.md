@@ -1,13 +1,13 @@
 # End-to-end harness
 
 A black-box check of the documented install/use flow against a freshly built
-`aside` binary. It complements the unit tests (`go test ./...`) and the manual
+`jotaside` binary. It complements the unit tests (`go test ./...`) and the manual
 [docs/SMOKE_TEST.md](../../docs/SMOKE_TEST.md) by exercising the real entry
 points end to end:
 
 1. `install` — builds the binary (from this checkout, or `@latest` outside it);
    pure-Go SQLite, no cgo.
-2. `paths` / PATH — prints data + binary locations and whether `aside` is on `PATH`.
+2. `paths` / PATH — prints data + binary locations and whether `jotaside` is on `PATH`.
 3. empty inbox on first run.
 4. CLI round-trip — `add` / `inbox` / `search` / `show` / `done`.
 5. hooks — a `>>` prompt is captured and a normal prompt passes through, for
@@ -36,8 +36,8 @@ have. This is what CI runs.
 For a first-time-user reproduction (empty `HOME`, `@latest`, unprivileged user):
 
 ```sh
-docker build -t aside-e2e -f test/e2e/Dockerfile .
-docker run --rm aside-e2e
+docker build -t jotaside-e2e -f test/e2e/Dockerfile .
+docker run --rm jotaside-e2e
 ```
 
 Behind a TLS-intercepting corporate proxy, see the CA note in

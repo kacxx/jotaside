@@ -1,5 +1,9 @@
 # A Claude Code plugin for the aside skill (#110): proposal
 
+> Written before the tool was renamed `jotaside` (2026-10-24). Names here are
+> the ones of the time (the `jot` or `aside` command, repo kacxx/aside-jot), and
+> issue and PR numbers refer to [kacxx/aside-jot](https://github.com/kacxx/aside-jot).
+
 Status: **decided**. Ready to merge, then slice into tickets.
 Source: #110
 

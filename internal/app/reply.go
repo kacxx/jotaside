@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kacxx/aside-jot/internal/capture"
+	"github.com/kacxx/jotaside/internal/capture"
 )
 
 // maxReplyRunes caps a reply put in an issue body, so a huge one does not

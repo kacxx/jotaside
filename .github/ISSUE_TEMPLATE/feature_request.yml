@@ -1,16 +1,16 @@
 name: Idea or feature request
-description: Something aside could do that it doesn't.
+description: Something jotaside could do that it doesn't.
 labels: [enhancement]
 body:
   - type: markdown
     attributes:
       value: |
-        Some things are left out on purpose, such as triage workflows, sync, a UI and write access for the MCP server. [docs/decisions.md](https://github.com/kacxx/aside-jot/blob/main/docs/decisions.md) says why and what would change that, so check there first; an idea that meets a "Revisit if" is very welcome.
+        Some things are left out on purpose, such as triage workflows, sync, a UI and write access for the MCP server. [docs/decisions.md](https://github.com/kacxx/jotaside/blob/main/docs/decisions.md) says why and what would change that, so check there first; an idea that meets a "Revisit if" is very welcome.
   - type: textarea
     id: problem
     attributes:
       label: The problem
-      description: What you were trying to do, and where aside got in the way or fell short.
+      description: What you were trying to do, and where jotaside got in the way or fell short.
     validations:
       required: true
   - type: textarea

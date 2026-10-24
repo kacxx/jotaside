@@ -48,7 +48,7 @@ func (s Session) LabelText() string {
 var resumeGOOS = runtime.GOOS
 
 // ResumeCommand returns a shell command that reopens the session, or "" if
-// its agent has no resume command aside knows about.
+// its agent has no resume command jotaside knows about.
 func (s Session) ResumeCommand() string {
 	switch s.Source {
 	case "claude":
@@ -75,7 +75,7 @@ func (s Session) ResumeCommand() string {
 }
 
 // Sessions returns the n most recently active sessions (all if n <= 0).
-// Jots without a session id, such as those from aside add, are not in any.
+// Jots without a session id, such as those from jotaside add, are not in any.
 func (s *Service) Sessions(ctx context.Context, n int) ([]Session, error) {
 	all, err := s.store.List(ctx, "", 0)
 	if err != nil {

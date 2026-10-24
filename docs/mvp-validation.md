@@ -1,5 +1,9 @@
 # MVP validation
 
+> Written before the tool was renamed `jotaside` (2026-10-24). Names here are
+> the ones of the time (the `jot` or `aside` command, repo kacxx/aside-jot), and
+> issue and PR numbers refer to [kacxx/aside-jot](https://github.com/kacxx/aside-jot).
+
 Record of the checks run on the initial import (commit `01a73eb`) before the
 real-use trial. Environment: Linux 6.18, 4 cores, Go 1.25.0, git 2.43.0.
 

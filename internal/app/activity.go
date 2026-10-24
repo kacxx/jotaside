@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kacxx/aside-jot/internal/capture"
+	"github.com/kacxx/jotaside/internal/capture"
 )
 
 const (
@@ -42,7 +42,7 @@ type ActivityRecord struct {
 	Text string    `json:"text"`
 }
 
-// Activity is what a jot's own session did after the jot was captured. aside
+// Activity is what a jot's own session did after the jot was captured. jotaside
 // makes no judgement about it; it only returns the evidence.
 type Activity struct {
 	JotID     int64     `json:"jot_id"`
@@ -68,7 +68,7 @@ func (s *Service) Activity(ctx context.Context, id int64) (Activity, error) {
 	return activityFor(e), nil
 }
 
-// activityFor reads the transcript of e's session, if aside can.
+// activityFor reads the transcript of e's session, if jotaside can.
 func activityFor(e Entry) Activity {
 	a := Activity{JotID: e.ID, CreatedAt: e.CreatedAt, Session: e.SessionID}
 	switch e.Source {
@@ -249,7 +249,7 @@ func (c *activityCollector) flushTools() {
 }
 
 // push keeps rec while the text budget lasts, and counts it as left out after.
-// The text is printed by aside activity and returned by the MCP tool, so its
+// The text is printed by jotaside activity and returned by the MCP tool, so its
 // terminal escapes and control characters are removed first.
 func (c *activityCollector) push(rec ActivityRecord) {
 	if c.full {

@@ -13,13 +13,13 @@ import (
 
 const event = "UserPromptSubmit"
 
-// Hook is the aside entry to install.
+// Hook is the jotaside entry to install.
 type Hook struct {
 	Agent   string // "claude" or "codex"
 	Command string // the command string, already quoted
 	// Binary is the unquoted path of this binary. An entry that runs it is
-	// aside's whatever the file is called, so a renamed or side-by-side build
-	// (aside-dev) updates its own hook instead of stacking another.
+	// jotaside's whatever the file is called, so a renamed or side-by-side build
+	// (jotaside-dev) updates its own hook instead of stacking another.
 	Binary string
 	// Windows also sets "commandWindows", which Codex prefers on Windows. It
 	// is left alone on other platforms, so a config shared between machines
@@ -31,14 +31,15 @@ type Hook struct {
 type Change struct {
 	Kind     string   // "added", "updated" or "unchanged"
 	Replaced []string // commands of the entries that were replaced
-	Removed  int      // extra aside entries removed, so only one runs
+	Removed  int      // extra jotaside entries removed, so only one runs
 }
 
 // Merge adds h to the UserPromptSubmit hooks in data (the contents of a
 // settings.json or hooks.json; empty means no config yet) and returns the new
 // contents. Everything else in the file keeps its order and content; only
-// whitespace can change. An existing aside entry, including one from before
-// the rename (`jot hook claude`), is updated instead of duplicated.
+// whitespace can change. An existing jotaside entry, including one under an
+// earlier name (`aside hook claude`, `jot hook claude`), is updated instead of
+// duplicated.
 func Merge(data []byte, h Hook) ([]byte, Change, error) {
 	data = bytes.TrimPrefix(data, []byte("\xef\xbb\xbf"))
 	if len(bytes.TrimSpace(data)) == 0 {
@@ -79,7 +80,7 @@ func Merge(data []byte, h Hook) ([]byte, Change, error) {
 		groupChanged := false
 		for hi := 0; hi < len(handlers); hi++ {
 			e, err := parseObject(handlers[hi])
-			if err != nil || !isAside(e, h) {
+			if err != nil || !isOurs(e, h) {
 				continue
 			}
 			if found {
@@ -142,28 +143,35 @@ func Merge(data []byte, h Hook) ([]byte, Change, error) {
 	return out.Bytes(), ch, nil
 }
 
-// isAside reports whether handler e runs `aside hook <agent>`, or the same
-// under the pre-rename name, `jot hook <agent>`, in either command field.
-func isAside(e *object, h Hook) bool {
+// isOurs reports whether handler e runs `jotaside hook <agent>`, or the same
+// under an earlier name of the command (`aside hook <agent>`, `jot hook
+// <agent>`), in either command field.
+func isOurs(e *object, h Hook) bool {
 	for _, k := range []string{"command", "commandWindows"} {
-		if isAsideCommand(stringField(e, k), h) {
+		if isOurCommand(stringField(e, k), h) {
 			return true
 		}
 	}
 	return false
 }
 
-func isAsideCommand(cmd string, h Hook) bool {
+func isOurCommand(cmd string, h Hook) bool {
 	f := splitCommand(cmd)
 	if len(f) != 3 || f[1] != "hook" || f[2] != h.Agent {
 		return false
 	}
-	return isAsideProgram(f[0], h.Binary)
+	return isOurProgram(f[0], h.Binary)
 }
 
-// isAsideProgram reports whether prog is aside (or its pre-rename name, jot),
-// or is this very binary: the same path or, through links, the same file.
-func isAsideProgram(prog, bin string) bool {
+// previousNames are earlier names of the jotaside command, oldest first. A
+// hook that runs one of them is replaced by setup rather than left to run
+// next to the new one.
+var previousNames = []string{"jot", "aside"}
+
+// isOurProgram reports whether prog is jotaside (or one of its previous
+// names), or is this very binary: the same path or, through links, the same
+// file.
+func isOurProgram(prog, bin string) bool {
 	if bin != "" {
 		if prog == bin || strings.ReplaceAll(prog, `\`, "/") == strings.ReplaceAll(bin, `\`, "/") {
 			return true
@@ -179,7 +187,7 @@ func isAsideProgram(prog, bin string) bool {
 		name = name[i+1:]
 	}
 	name = strings.TrimSuffix(strings.ToLower(name), ".exe")
-	return name == "aside" || name == "jot"
+	return name == "jotaside" || slices.Contains(previousNames, name)
 }
 
 // splitCommand splits a command string on spaces, honouring single and double

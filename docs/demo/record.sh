@@ -1,20 +1,20 @@
 #!/usr/bin/env bash
 # Re-records docs/demo.gif with the real Claude Code CLI.
 #
-# Needs: claude (logged in), asciinema 3, agg, go, python3. Builds aside from
-# this checkout and runs everything in /tmp/aside-demo with its own database,
+# Needs: claude (logged in), asciinema 3, agg, go, python3. Builds jotaside from
+# this checkout and runs everything in /tmp/jotaside-demo with its own database,
 # so no real jots, paths or settings appear. Claude runs with only a demo
 # settings file (--setting-sources local), so warnings about your own settings
 # stay out of the recording. Each run makes a few real model calls.
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/../.." && pwd)
-work=/tmp/aside-demo
+work=/tmp/jotaside-demo
 here="$repo/docs/demo"
 
 rm -rf "$work/api" "$work/bin" "$work"/demo.*
 mkdir -p "$work/api" "$work/bin"
-(cd "$repo" && go build -o "$work/bin/aside" ./cmd/aside)
+(cd "$repo" && go build -o "$work/bin/jotaside" ./cmd/jotaside)
 
 cd "$work/api"
 git init -q -b main
@@ -24,7 +24,7 @@ printf 'module api\n\ngo 1.25.0\n' > go.mod
 git add .
 git -c user.name=demo -c user.email=demo@example.com commit -qm "token cache"
 
-# Demo-only Claude config: the aside hook and MCP server from $work/bin, plus
+# Demo-only Claude config: the jotaside hook and MCP server from $work/bin, plus
 # the env and model from your user settings (proxy certificates, for example).
 python3 - "$work" <<'EOF'
 import json, os, sys
@@ -37,22 +37,22 @@ except OSError:
 settings = {
     "env": user.get("env", {}),
     # Edit is the TTL change, only inside the throwaway tree (macOS reports
-    # it as /private/tmp). aside done is the only shell command. Anything
+    # it as /private/tmp). jotaside done is the only shell command. Anything
     # else has to ask, and the driver treats a permission prompt as a failed take.
     "permissions": {"allow": [
-        "mcp__aside",
+        "mcp__jotaside",
         f"Edit({work}/api/**)",
         f"Edit(/private{work}/api/**)",
-        f"Bash({work}/bin/aside done *)",
-        f"Bash(/private{work}/bin/aside done *)",
+        f"Bash({work}/bin/jotaside done *)",
+        f"Bash(/private{work}/bin/jotaside done *)",
     ]},
     "hooks": {"UserPromptSubmit": [{"hooks": [
-        {"type": "command", "command": f"{work}/bin/aside hook claude"}]}]},
+        {"type": "command", "command": f"{work}/bin/jotaside hook claude"}]}]},
 }
 if "model" in user:
     settings["model"] = user["model"]
 json.dump(settings, open(f"{work}/settings.json", "w"), indent=2)
-json.dump({"mcpServers": {"aside": {"command": f"{work}/bin/aside", "args": ["mcp"]}}},
+json.dump({"mcpServers": {"jotaside": {"command": f"{work}/bin/jotaside", "args": ["mcp"]}}},
           open(f"{work}/mcp.json", "w"), indent=2)
 EOF
 
@@ -111,5 +111,5 @@ EOF
 agg --theme monokai --speed 1.6 --idle-time-limit 1.5 --last-frame-duration 5 \
   "$work/demo.cast" "$repo/docs/demo.gif" > /dev/null 2>&1
 
-"$work/bin/aside" search token
+"$work/bin/jotaside" search token
 ls -l "$repo/docs/demo.gif"

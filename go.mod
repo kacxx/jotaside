@@ -1,4 +1,4 @@
-module github.com/kacxx/aside-jot
+module github.com/kacxx/jotaside
 
 go 1.25.0
 

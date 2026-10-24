@@ -19,7 +19,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kacxx/aside-jot/internal/app"
+	"github.com/kacxx/jotaside/internal/app"
 )
 
 // LatestProtocolVersion is offered when the client asks for one we don't know.
@@ -61,9 +61,9 @@ type Server struct {
 	svc     Reader
 	version string
 	now     func() time.Time
-	// exe is the path to aside, for open_command; "" means none is known.
+	// exe is the path to jotaside, for open_command; "" means none is known.
 	exe string
-	// goos is the system aside runs on: aside open works only on macOS and Windows, so
+	// goos is the system jotaside runs on: jotaside open works only on macOS and Windows, so
 	// elsewhere no open_command is offered.
 	goos string
 }
@@ -77,7 +77,7 @@ func NewServer(svc Reader, version string) *Server {
 	return &Server{svc: svc, version: version, now: time.Now, exe: exe, goos: runtime.GOOS}
 }
 
-// canOpen reports whether this server can offer an `aside open` command.
+// canOpen reports whether this server can offer a `jotaside open` command.
 func (s *Server) canOpen() bool { return s.exe != "" && app.CanOpen(s.goos) }
 
 // withCommands sets OpenCommand on the entries that have an OpenURL.
@@ -210,7 +210,7 @@ func (s *Server) dispatch(ctx context.Context, req request) (any, *rpcError) {
 		return map[string]any{
 			"protocolVersion": v,
 			"capabilities":    map[string]any{"tools": map[string]any{}},
-			"serverInfo":      map[string]any{"name": "aside", "version": s.version},
+			"serverInfo":      map[string]any{"name": "jotaside", "version": s.version},
 			"instructions": "Read-only access to the user's jot inbox: side-channel notes they " +
 				"captured while working. You cannot create jots; only the user can.",
 		}, nil
@@ -241,8 +241,8 @@ const maxLimit = 200
 // broad query can't return every jot of every session.
 const maxSessionMatches = 5
 
-// doneToken stands in for the aside done command in tool descriptions; the
-// server fills in the full path to aside, which the agent's shell may not
+// doneToken stands in for the jotaside done command in tool descriptions; the
+// server fills in the full path to jotaside, which the agent's shell may not
 // have on its PATH.
 const doneToken = "{{DONE_COMMAND}}"
 
@@ -256,7 +256,7 @@ const quoteNote = "Quote each jot's text exactly as stored: don't reword, summar
 
 // openNote is how the tools describe open_url. Claude Desktop doesn't open a
 // link in a chat when it is clicked, so the agent runs or offers a command
-// instead, with the full path to aside because the shell may not have aside
+// instead, with the full path to jotaside because the shell may not have jotaside
 // on PATH. Running it can fail inside an agent sandbox (Codex CLI on macOS),
 // so the agent falls back to giving the user the command. fallback says what
 // to use when a jot's chat has no link.
@@ -265,8 +265,8 @@ func openNote(fallback string) string {
 		"and open_command is the command that opens it. Don't show open_url as a link: clicking it doesn't open " +
 		"the chat in Claude Desktop. Offer to open the chat yourself, and run open_command when the user asks. " +
 		"If you show a command, or running it fails, give the user that entry's open_command exactly as given, " +
-		"including the full path, to run in their own terminal; don't write a generic `aside open <id>`, since " +
-		"aside may not be on their PATH. If open_url and open_command are not set, " + fallback
+		"including the full path, to run in their own terminal; don't write a generic `jotaside open <id>`, since " +
+		"jotaside may not be on their PATH. If open_url and open_command are not set, " + fallback
 }
 
 // toolList returns tools with the done command filled in.
@@ -360,7 +360,7 @@ var tools = []map[string]any{
 			"for questions like \"what was I working on last?\". Each session has its repo and branch, latest_jot, " +
 			"jot_count and resume_command to reopen it (the user runs it; this tool doesn't). Done jots count too: " +
 			"jot_count includes them, latest_jot may be one (see its status), and a session whose jots are all done " +
-			"is still listed; use inbox for open jots. " + quoteNote + sessionOpenNote + "Jots without a session, such as those from aside add, are not listed. limit caps the sessions.",
+			"is still listed; use inbox for open jots. " + quoteNote + sessionOpenNote + "Jots without a session, such as those from jotaside add, are not listed. limit caps the sessions.",
 		"inputSchema": map[string]any{
 			"type": "object",
 			"properties": map[string]any{

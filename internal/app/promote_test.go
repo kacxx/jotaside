@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/kacxx/aside-jot/internal/gitctx"
+	"github.com/kacxx/jotaside/internal/gitctx"
 )
 
 // fakeRunner answers git and gh calls without running anything.
@@ -82,17 +82,17 @@ var repoInfo = gitctx.Info{Root: "/r", Name: "r", Branch: "main", Commit: "abc12
 
 func TestParseRemote(t *testing.T) {
 	for in, want := range map[string]string{
-		"https://github.com/kacxx/aside-jot.git":          "kacxx/aside-jot",
-		"https://github.com/kacxx/aside-jot":              "kacxx/aside-jot",
-		"https://github.com/kacxx/aside-jot/":             "kacxx/aside-jot",
-		"https://user:tok@github.com/kacxx/aside-jot.git": "kacxx/aside-jot",
-		"http://GitHub.com/kacxx/aside-jot":               "kacxx/aside-jot",
-		"git@github.com:kacxx/aside-jot.git":              "kacxx/aside-jot",
-		"github.com:kacxx/aside-jot":                      "kacxx/aside-jot",
-		"ssh://git@github.com/kacxx/aside-jot.git":        "kacxx/aside-jot",
-		"ssh://git@github.com:22/kacxx/aside-jot":         "kacxx/aside-jot",
-		"https://ghe.example.com/team/proj.git":           "ghe.example.com/team/proj",
-		"git@ghe.example.com:team/proj.git":               "ghe.example.com/team/proj",
+		"https://github.com/kacxx/jotaside.git":          "kacxx/jotaside",
+		"https://github.com/kacxx/jotaside":              "kacxx/jotaside",
+		"https://github.com/kacxx/jotaside/":             "kacxx/jotaside",
+		"https://user:tok@github.com/kacxx/jotaside.git": "kacxx/jotaside",
+		"http://GitHub.com/kacxx/jotaside":               "kacxx/jotaside",
+		"git@github.com:kacxx/jotaside.git":              "kacxx/jotaside",
+		"github.com:kacxx/jotaside":                      "kacxx/jotaside",
+		"ssh://git@github.com/kacxx/jotaside.git":        "kacxx/jotaside",
+		"ssh://git@github.com:22/kacxx/jotaside":         "kacxx/jotaside",
+		"https://ghe.example.com/team/proj.git":          "ghe.example.com/team/proj",
+		"git@ghe.example.com:team/proj.git":              "ghe.example.com/team/proj",
 	} {
 		if got, err := ParseRemote(in); err != nil || got != want {
 			t.Errorf("ParseRemote(%q) = %q, %v; want %q", in, got, err, want)
@@ -176,19 +176,19 @@ func TestPromoteDryRun(t *testing.T) {
 	ctx := context.Background()
 	svc := promoteService(t, repoInfo)
 	before, _ := svc.Show(ctx, 1)
-	f := &fakeRunner{remote: "git@github.com:kacxx/aside-jot.git"}
+	f := &fakeRunner{remote: "git@github.com:kacxx/jotaside.git"}
 
 	p, err := svc.Promote(ctx, f, PromoteRequest{ID: 1, DryRun: true})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if p.Repo != "kacxx/aside-jot" || p.Title != "fix the cache TTL" || p.URL != "" ||
+	if p.Repo != "kacxx/jotaside" || p.Title != "fix the cache TTL" || p.URL != "" ||
 		!strings.HasPrefix(p.Body, "fix the cache TTL  \nsee https://example.com/x\n\nCaptured ") {
 		t.Fatalf("promotion: %+v", p)
 	}
 	// Of gh, a dry run only looks up the repo's visibility.
 	for _, c := range f.calls {
-		if strings.HasPrefix(c, "gh") && c != "gh repo view kacxx/aside-jot --json visibility" {
+		if strings.HasPrefix(c, "gh") && c != "gh repo view kacxx/jotaside --json visibility" {
 			t.Errorf("dry run ran %q", c)
 		}
 	}
@@ -212,8 +212,8 @@ func TestPromoteDryRun(t *testing.T) {
 func TestPromoteSuccessThenRefused(t *testing.T) {
 	ctx := context.Background()
 	svc := promoteService(t, repoInfo)
-	const url = "https://github.com/kacxx/aside-jot/issues/42"
-	f := &fakeRunner{remote: "https://github.com/kacxx/aside-jot.git", url: url}
+	const url = "https://github.com/kacxx/jotaside/issues/42"
+	f := &fakeRunner{remote: "https://github.com/kacxx/jotaside.git", url: url}
 
 	p, err := svc.Promote(ctx, f, PromoteRequest{ID: 1})
 	if err != nil {
@@ -225,8 +225,8 @@ func TestPromoteSuccessThenRefused(t *testing.T) {
 	want := []string{
 		"git -C /r remote get-url origin",
 		"gh auth status --hostname github.com",
-		"gh repo view kacxx/aside-jot --json visibility",
-		"gh issue create --repo=kacxx/aside-jot --title=fix the cache TTL --body-file=-",
+		"gh repo view kacxx/jotaside --json visibility",
+		"gh issue create --repo=kacxx/jotaside --title=fix the cache TTL --body-file=-",
 	}
 	if strings.Join(f.calls, "\n") != strings.Join(want, "\n") {
 		t.Fatalf("calls:\n%s", strings.Join(f.calls, "\n"))
@@ -240,7 +240,7 @@ func TestPromoteSuccessThenRefused(t *testing.T) {
 		t.Fatalf("after promote: %+v (%s)", e, e.Metadata)
 	}
 
-	f = &fakeRunner{remote: "https://github.com/kacxx/aside-jot.git", url: "https://other"}
+	f = &fakeRunner{remote: "https://github.com/kacxx/jotaside.git", url: "https://other"}
 	_, err = svc.Promote(ctx, f, PromoteRequest{ID: 1})
 	var ap *AlreadyPromotedError
 	if !errors.As(err, &ap) || ap.URL != url || !strings.Contains(err.Error(), url) {
@@ -435,7 +435,7 @@ func TestPromoteWithReply(t *testing.T) {
 	if err := os.WriteFile(path, []byte(replyTranscript), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	f := &fakeRunner{remote: "git@github.com:kacxx/aside-jot.git"}
+	f := &fakeRunner{remote: "git@github.com:kacxx/jotaside.git"}
 
 	p, err := svc.Promote(ctx, f, PromoteRequest{ID: 2, DryRun: true, WithReply: true})
 	if err != nil {

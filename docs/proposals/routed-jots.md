@@ -1,5 +1,9 @@
 # Routed jots (#30): design proposal
 
+> Written before the tool was renamed `jotaside` (2026-10-24). Names here are
+> the ones of the time (the `jot` or `aside` command, repo kacxx/aside-jot), and
+> issue and PR numbers refer to [kacxx/aside-jot](https://github.com/kacxx/aside-jot).
+
 Status: design approved on PR #54 (6 Oct 2026). Build waits until late October.
 
 Built from issue #30, its 4 Oct review comment and docs/decisions.md.

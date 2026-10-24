@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/kacxx/aside-jot/internal/app"
-	"github.com/kacxx/aside-jot/internal/store"
+	"github.com/kacxx/jotaside/internal/app"
+	"github.com/kacxx/jotaside/internal/store"
 )
 
 const codexJot = ">> retry budget in the payments client looks unbounded, check before release"

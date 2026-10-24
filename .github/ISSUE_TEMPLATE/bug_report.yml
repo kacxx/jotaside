@@ -1,5 +1,5 @@
 name: Bug report
-description: Something in aside doesn't work as documented.
+description: Something in jotaside doesn't work as documented.
 labels: [bug]
 body:
   - type: markdown
@@ -24,8 +24,8 @@ body:
   - type: input
     id: version
     attributes:
-      label: aside version
-      description: The output of `aside version`.
+      label: jotaside version
+      description: The output of `jotaside version`.
     validations:
       required: true
   - type: dropdown
@@ -39,7 +39,7 @@ body:
         - Codex CLI
         - Codex app
         - Cursor
-        - None (aside CLI only)
+        - None (jotaside CLI only)
         - Other
     validations:
       required: true
@@ -58,6 +58,6 @@ body:
   - type: textarea
     id: paths
     attributes:
-      label: Output of `aside paths`
-      description: Shows which database and binary aside is using, and warns if a hook would run a different aside. Replace your username if you like.
+      label: Output of `jotaside paths`
+      description: Shows which database and binary jotaside is using, and warns if a hook would run a different jotaside. Replace your username if you like.
       render: text

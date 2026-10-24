@@ -27,7 +27,7 @@ func abs(p string) string {
 }
 
 func TestResolveAbsoluteAsInvoked(t *testing.T) {
-	want := abs("/home/u/go/bin/aside")
+	want := abs("/home/u/go/bin/jotaside")
 	got, err := fakeBinary(want).Resolve()
 	if err != nil || got != want {
 		t.Fatalf("Resolve = %q, %v; want %q", got, err, want)
@@ -35,32 +35,32 @@ func TestResolveAbsoluteAsInvoked(t *testing.T) {
 }
 
 func TestResolveBareNameUsesLookPath(t *testing.T) {
-	b := fakeBinary("aside")
-	found := abs("/usr/local/bin/aside")
+	b := fakeBinary("jotaside")
+	found := abs("/usr/local/bin/jotaside")
 	b.LookPath = func(name string) (string, error) {
-		if name != "aside" {
+		if name != "jotaside" {
 			t.Errorf("LookPath(%q)", name)
 		}
 		return found, nil
 	}
 	// os.Executable would give the resolved target; it must not be used.
-	b.Executable = func() (string, error) { return abs("/opt/aside-1.2/aside"), nil }
+	b.Executable = func() (string, error) { return abs("/opt/jotaside-1.2/jotaside"), nil }
 	if got, err := b.Resolve(); err != nil || got != found {
 		t.Fatalf("Resolve = %q, %v; want %q", got, err, found)
 	}
 }
 
 func TestResolveRelativeIsMadeAbsolute(t *testing.T) {
-	got, err := fakeBinary(filepath.FromSlash("./bin/aside")).Resolve()
-	if want := abs("/work/bin/aside"); err != nil || got != want {
+	got, err := fakeBinary(filepath.FromSlash("./bin/jotaside")).Resolve()
+	if want := abs("/work/bin/jotaside"); err != nil || got != want {
 		t.Fatalf("Resolve = %q, %v; want %q", got, err, want)
 	}
 }
 
 func TestResolveFallsBackToExecutable(t *testing.T) {
-	b := fakeBinary("aside") // LookPath fails
-	b.Executable = func() (string, error) { return abs("/opt/aside"), nil }
-	if got, err := b.Resolve(); err != nil || got != abs("/opt/aside") {
+	b := fakeBinary("jotaside") // LookPath fails
+	b.Executable = func() (string, error) { return abs("/opt/jotaside"), nil }
+	if got, err := b.Resolve(); err != nil || got != abs("/opt/jotaside") {
 		t.Fatalf("Resolve = %q, %v", got, err)
 	}
 	b.Executable = func() (string, error) { return "", errors.New("boom") }
@@ -71,9 +71,9 @@ func TestResolveFallsBackToExecutable(t *testing.T) {
 
 func TestResolveRefusesTemporaryBinary(t *testing.T) {
 	for _, p := range []string{
-		"/tmp/go-build123/b001/exe/aside", // go run
-		"/var/folders/xx/T/go-build9/b001/exe/aside",
-		"/tmp/x/aside", // under the temp dir
+		"/tmp/go-build123/b001/exe/jotaside", // go run
+		"/var/folders/xx/T/go-build9/b001/exe/jotaside",
+		"/tmp/x/jotaside", // under the temp dir
 	} {
 		_, err := fakeBinary(abs(p)).Resolve()
 		if err == nil || !strings.Contains(err.Error(), "go install") {
@@ -81,14 +81,14 @@ func TestResolveRefusesTemporaryBinary(t *testing.T) {
 		}
 	}
 	// A path that only resolves into the temp dir (macOS /var -> /private/var).
-	b := fakeBinary(abs("/var/folders/aside"))
+	b := fakeBinary(abs("/var/folders/jotaside"))
 	b.TempDir = abs("/var/folders")
 	b.EvalLinks = func(p string) (string, error) { return strings.Replace(p, abs("/var"), abs("/private/var"), 1), nil }
 	if _, err := b.Resolve(); err == nil {
 		t.Error("symlinked temp dir not detected")
 	}
 	// Not under the temp dir, and not a sibling with the same prefix.
-	b = fakeBinary(abs("/tmpfoo/aside"))
+	b = fakeBinary(abs("/tmpfoo/jotaside"))
 	if _, err := b.Resolve(); err != nil {
 		t.Errorf("/tmpfoo refused: %v", err)
 	}
@@ -100,8 +100,8 @@ func TestResolveKeepsSymlink(t *testing.T) {
 		t.Skip("symlinks need privileges on Windows")
 	}
 	dir := t.TempDir()
-	target := filepath.Join(dir, "versions", "1.2", "aside")
-	link := filepath.Join(dir, "bin", "aside")
+	target := filepath.Join(dir, "versions", "1.2", "jotaside")
+	link := filepath.Join(dir, "bin", "jotaside")
 	must(t, os.MkdirAll(filepath.Dir(target), 0o755))
 	must(t, os.MkdirAll(filepath.Dir(link), 0o755))
 	must(t, os.WriteFile(target, []byte("x"), 0o755))

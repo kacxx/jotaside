@@ -17,11 +17,11 @@ WORK = os.environ["DEMO_WORK"]
 REPO = os.environ["DEMO_REPO"]
 # acceptEdits, not auto: auto mode approves whatever the model tries, which
 # records as a cold session (sed, go vet, a commit offer) instead of the
-# plugin's aside tools. The plugin and MCP server are loaded for the session.
+# plugin's jotaside tools. The plugin and MCP server are loaded for the session.
 CLAUDE = (f"command claude --setting-sources local --settings {WORK}/settings.json "
           f"--permission-mode acceptEdits --strict-mcp-config --mcp-config {WORK}/mcp.json "
           f"--plugin-dir {REPO}")
-TITLE = r"\033[1maside\033[0m \342\200\224 a side channel for thoughts while you work with coding agents\n\n"
+TITLE = r"\033[1mjotaside\033[0m \342\200\224 a side channel for thoughts while you work with coding agents\n\n"
 
 # Terminal queries Claude Code sends at startup, with the replies a terminal
 # gives; without them it ignores keys.
@@ -213,7 +213,7 @@ typed("yes, run it. don't commit")
 pause(0.4)
 enter()
 turn_done()
-done = subprocess.run([f"{WORK}/bin/aside", "search", "token"],
+done = subprocess.run([f"{WORK}/bin/jotaside", "search", "token"],
                       capture_output=True, text=True, env=env)
 if "(done)" not in done.stdout:
     sys.stderr.write("demo: jot 1 is still open; not writing the gif\n")
@@ -224,8 +224,8 @@ pause(1.2)
 quit_claude()
 pause(1.0)
 
-for cmd, wait in [("aside inbox", 2.5),
-                  ("aside search token", 3.0)]:
+for cmd, wait in [("jotaside inbox", 2.5),
+                  ("jotaside search token", 3.0)]:
     typed(cmd)
     pause(0.3)
     enter()

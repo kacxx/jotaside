@@ -1,8 +1,8 @@
 blank_issues_enabled: true
 contact_links:
   - name: Setup and usage docs
-    url: https://github.com/kacxx/aside-jot/blob/main/docs/setup.md
+    url: https://github.com/kacxx/jotaside/blob/main/docs/setup.md
     about: Installing the hook, the MCP server, and opening a jot's chat.
-  - name: Why aside works the way it does
-    url: https://github.com/kacxx/aside-jot/blob/main/docs/decisions.md
+  - name: Why jotaside works the way it does
+    url: https://github.com/kacxx/jotaside/blob/main/docs/decisions.md
     about: Design decisions and what would make each worth revisiting.
