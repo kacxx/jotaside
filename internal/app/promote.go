@@ -252,7 +252,9 @@ func IssueBody(e Entry) string { return issueBody(e, "") }
 // as IssueTitle is.
 func issueBody(e Entry, reply string) string {
 	var b strings.Builder
-	b.WriteString(strings.TrimSpace(e.Text))
+	// Clean before trimming, so spaces after a removed escape are trimmed too
+	// and can't turn the jot into an indented Markdown code block.
+	b.WriteString(strings.TrimSpace(cleanText(e.Text)))
 	if reply != "" {
 		b.WriteString("\n\n## Agent reply\n\n")
 		b.WriteString(reply)

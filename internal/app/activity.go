@@ -257,6 +257,10 @@ func (c *activityCollector) push(rec ActivityRecord) {
 		return
 	}
 	rec.Text = strings.TrimSpace(cleanText(rec.Text))
+	if rec.Text == "" {
+		// Nothing printable was left, e.g. a prompt of only escapes.
+		return
+	}
 	if rs := []rune(rec.Text); len(rs) > maxActivityRecordRunes {
 		rec.Text = string(rs[:maxActivityRecordRunes-1]) + "…"
 	}

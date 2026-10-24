@@ -232,7 +232,8 @@ jotaside promote 12 --with-reply --dry-run   # preview the body with the agent's
   compacting the conversation does not start a new turn, so jotting right
   after any of them still picks up the reply before it. Transcripts can
   hold secrets and internal paths, so check the body when asked to confirm.
-  The reply is posted as written, so an
+  The reply is posted with terminal escapes and other control characters
+  removed, and otherwise as written, so an
   `@name` in it notifies that GitHub user and a `#123` links to that issue. A
   missing or unreadable transcript, or no reply before the jot, is an error; no
   issue is created without it.
