@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.1.0 (2026-10-24)
+
+
+### ⚠ BREAKING CHANGES
+
+* the command, Go module, plugin, skill and MCP server are renamed from aside to jotaside. The data directory and JOT_* variables are unchanged. Install jotaside and run `jotaside setup <agent>` to replace the old hook; re-add the MCP server and reinstall the plugin under the new name.
+
+### Features
+
+* rename aside to jotaside ([0150a72](https://github.com/kacxx/jotaside/commit/0150a72d7e2451dc5482ecdb2fbf99f9f585ba18))
+
+
+### Bug Fixes
+
+* clean jot text before trimming and drop activity records left empty by cleaning ([#13](https://github.com/kacxx/jotaside/issues/13)) ([96fe877](https://github.com/kacxx/jotaside/commit/96fe877d7c23cebdb6beaa73cfeb017d60c152d6))
+
 ## [aside-jot](https://github.com/kacxx/aside-jot) 0.1.0 to 0.7.0, before the rename
 
 jotaside was renamed from aside-jot (github.com/kacxx/aside-jot, versions 0.1.0
