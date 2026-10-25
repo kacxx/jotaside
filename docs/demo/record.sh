@@ -6,6 +6,10 @@
 # so no real jots, paths or settings appear. Claude runs with only a demo
 # settings file (--setting-sources local), so warnings about your own settings
 # stay out of the recording. Each run makes a few real model calls.
+#
+# In these scripted sessions Claude Code 2.1.301+ puts each jot back in the
+# input box after it's saved; drive.py clears it. It hasn't been seen in a
+# normal session (checked on 2.1.310, #8).
 set -euo pipefail
 
 repo=$(cd "$(dirname "$0")/../.." && pwd)
