@@ -23,6 +23,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 	"unicode/utf8"
 
 	"github.com/dustin/go-humanize"
@@ -150,6 +151,12 @@ func tooLarge(original string) string {
 	return notSaved(fmt.Errorf("hook payload is larger than %s", humanize.IBytes(uint64(maxPayload))), original)
 }
 
+// repeatWindow is how long after a jot the same text from the same session
+// counts as a repeat, not a new jot (#8). A queued jot re-sent while the agent
+// was busy reaches the hook milliseconds after the first; a jot re-entered by
+// hand comes seconds later.
+const repeatWindow = time.Minute
+
 // save opens the service and captures req. It returns a message for the user,
 // or "" if req.OnceKey matched a jot another hook already saved and confirmed.
 // It never panics.
@@ -164,13 +171,19 @@ func save(ctx context.Context, open app.Opener, req app.CaptureRequest, original
 		return notSaved(err, original)
 	}
 	defer svc.Close()
-	e, saved, err := svc.CaptureOnce(ctx, req)
+	if req.SessionID != "" {
+		req.RepeatWindow = repeatWindow
+	}
+	e, r, err := svc.CaptureOnce(ctx, req)
 	if err != nil {
 		return notSaved(err, original)
 	}
-	if !saved {
+	switch r {
+	case app.SamePrompt:
 		// Cursor joins every hook's user_message; only the saving hook confirms.
 		return ""
+	case app.Repeated:
+		return fmt.Sprintf("✓ Already jotted #%d", e.ID)
 	}
 	return fmt.Sprintf("✓ Jotted #%d", e.ID)
 }

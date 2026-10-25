@@ -91,6 +91,12 @@ records the results for the initial version.
   can reach jotaside twice; captures are deduplicated by Cursor's
   `generation_id` (`CaptureRequest.OnceKey`), and only the reply that saved
   the jot carries a message.
+- **A repeated jot is saved once.** Claude Code runs the prompt hook only
+  when it takes a queued prompt off the queue, so a jot sent while the agent
+  is busy shows no `✓ Jotted` until the turn ends, and people re-send it.
+  Hook captures with a session id skip a jot whose text (whitespace
+  collapsed, case kept) the same session saved within `repeatWindow` (a
+  minute), and reply `✓ Already jotted #N` (`store.InsertDedup`, #8).
 - **Cursor sends blocked prompts anyway.** It keeps a blocked prompt in the
   chat and sends it with the next message. This is a Cursor bug
   (aside-jot #25) that jotaside can't work

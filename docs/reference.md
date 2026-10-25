@@ -32,6 +32,13 @@ busy can be queued and merged with other prompts, and only a jot at the start
 of a prompt is matched. Don't resend in Cursor: it keeps the jot in the chat
 and sends it with your next message anyway (see [cursor.md](cursor.md)).
 
+A jot sent while the agent is busy is saved and confirmed only when the agent
+finishes its turn, so don't re-send it while you wait. A repeat is caught
+anyway: when a hook captures a jot whose text matches one the same chat saved
+in the last minute, ignoring differences in spaces but not case, it is blocked
+but not saved again, and the reply is `✓ Already jotted #N` with the first
+jot's number. `jotaside add` has no chat, so it always saves.
+
 ## Failure behaviour
 
 - **Ordinary prompts and malformed hook payloads fail open**: the prompt goes
