@@ -27,9 +27,8 @@ instead.
 
 ![Demo: a ">>" prompt is blocked and saved with its git context, Claude makes the change, "update jot 1" checks the session and closes the jot with a note, and the inbox still holds the other jot](docs/demo.gif)
 
-*Recorded with the real Claude Code CLI (v2.1.309) and v0.7.0, before the
-rename, so it shows the old command name, `aside`; the commands are otherwise
-the same. [`docs/demo/record.sh`](docs/demo/record.sh) re-records it.*
+*Recorded with the real Claude Code CLI (v2.1.310) and jotaside v0.1.1.
+[`docs/demo/record.sh`](docs/demo/record.sh) re-records it.*
 
 ## Install
 
