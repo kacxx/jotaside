@@ -39,8 +39,9 @@ PY="$(command -v python3 || command -v python)"
 json() { "$PY" -c "import json,sys; d=json.load(open(sys.argv[1], encoding='utf-8')); print($2)" "$1"; }
 # at_least X.Y.Z reports whether the release under test is X.Y.Z or newer.
 at_least() { "$PY" -c "import sys; v=lambda s: [int(p) for p in s.split('-')[0].split('.')]; sys.exit(0 if v(sys.argv[1]) >= v(sys.argv[2]) else 1)" "$VERSION" "$1"; }
-# mode PATH prints a file's permission bits, e.g. 600.
-mode() { stat -f %Lp "$1" 2>/dev/null || stat -c %a "$1"; }
+# mode PATH prints a file's permission bits, e.g. 600. GNU stat takes -f too
+# (file system status), so pick the form by OS rather than by trying one.
+mode() { if [ "$OS" = darwin ]; then stat -f %Lp "$1"; else stat -c %a "$1"; fi; }
 
 case "$(uname -s)" in
   Darwin) OS=darwin; EXT=tar.gz; EXE=jotaside ;;
