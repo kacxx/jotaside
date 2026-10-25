@@ -2,7 +2,7 @@
 
 > Written before the tool was renamed `jotaside` (2026-10-24). Names here are
 > the ones of the time (the `jot` or `aside` command, repo kacxx/aside-jot), and
-> issue and PR numbers refer to [kacxx/aside-jot](https://github.com/kacxx/aside-jot).
+> issue and PR numbers refer to kacxx/aside-jot (now private and archived).
 
 Status: design approved on PR #54 (6 Oct 2026). Build waits until late October.
 

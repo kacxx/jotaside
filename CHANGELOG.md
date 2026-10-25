@@ -16,7 +16,7 @@
 
 * clean jot text before trimming and drop activity records left empty by cleaning ([#13](https://github.com/kacxx/jotaside/issues/13)) ([96fe877](https://github.com/kacxx/jotaside/commit/96fe877d7c23cebdb6beaa73cfeb017d60c152d6))
 
-## [aside-jot](https://github.com/kacxx/aside-jot) 0.1.0 to 0.7.0, before the rename
+## aside-jot 0.1.0 to 0.7.0, before the rename
 
 jotaside was renamed from aside-jot (github.com/kacxx/aside-jot, versions 0.1.0
 to 0.7.0, with the `aside` command). This changelog starts at the rename;

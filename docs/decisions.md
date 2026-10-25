@@ -6,7 +6,7 @@ questioned again; don't rewrite old ones, add a new entry that replaces them.
 
 Entries before [Renamed to jotaside](#renamed-to-jotaside-keeping-the-jot-data-names)
 use the command's name at the time, `aside`; read it as `jotaside`. Issue and
-PR numbers in them refer to [kacxx/aside-jot](https://github.com/kacxx/aside-jot).
+PR numbers in them refer to kacxx/aside-jot (now private and archived).
 
 ## Not in v1, on purpose
 
@@ -50,7 +50,7 @@ dominates the codebase.
 the binary and its tests stay green, but nothing new is built for Cursor.
 
 **Why:** Cursor keeps a blocked prompt in the chat and sends it to the model
-with the next message ([#25](https://github.com/kacxx/aside-jot/issues/25)).
+with the next message (aside-jot #25).
 Cursor has reproduced it and is tracking it, with no date for a fix. A hook
 only decides whether a prompt is sent now, so aside can't work around it, and
 "the model never sees a jot" is the product's main promise. Cursor's own
@@ -114,10 +114,10 @@ mislead users about what protects their notes.
 access, or one whose shell commands need a person's approval, still can't
 change or publish jots silently. Since closing jots on request is a real
 workflow, make the CLI path easy to find and fast
-([#43](https://github.com/kacxx/aside-jot/issues/43)) instead of pretending
+(aside-jot #43) instead of pretending
 it doesn't exist.
 
-**Update ([#45](https://github.com/kacxx/aside-jot/issues/45)):** `promote`
+**Update (aside-jot #45):** `promote`
 now always shows the issue and asks `[y/N]`, and refuses to run when stdin is
 not a terminal unless `--yes` is passed (`--dry-run` is unchanged). A plain pipe
 can't answer, so an agent has to pass `--yes`, which the user or their approval
@@ -134,8 +134,8 @@ covers a plain pipe: a pseudo-terminal (an agent shell that allocates one, or
 **Decided:** `aside find` and `aside sessions` (PR #32) group existing jots by
 the session id hooks already record. No new capture fields, tags or indexes.
 The larger session-index design stays in
-[#20](https://github.com/kacxx/aside-jot/issues/20) and
-[#30](https://github.com/kacxx/aside-jot/issues/30).
+aside-jot #20 and
+[#2](https://github.com/kacxx/jotaside/issues/2), formerly aside-jot #30.
 
 **Why:** what's useful is easier to learn from daily use than to design up
 front. The slice needed no schema change, so it's cheap to change or drop.
@@ -290,7 +290,7 @@ promotion.
 **Why:** it keeps the "no LLM in the loop, nothing automatic" promise and
 reuses the user's existing `gh` authentication instead of storing tokens.
 Including the agent's reply in the issue
-([#33](https://github.com/kacxx/aside-jot/issues/33)) is opt-in for the same
+(aside-jot #33) is opt-in for the same
 reason: transcripts can contain secrets and the target repo may be public.
 
 ## Ticket keys are matched at query time, not tagged
