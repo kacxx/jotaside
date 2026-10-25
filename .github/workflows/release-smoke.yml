@@ -1,9 +1,15 @@
 name: Release smoke test
 
 # Installs a published release the way the README tells a new user to, on
-# clean macOS, Linux and Windows runners: download, checksum, setup into empty
-# config folders, a hook capture, the MCP server and backup. Runs after each
-# release (called from release-please.yml) and on demand for any tag.
+# clean macOS, Linux and Windows runners: download, checksum, setup into the
+# default ~/.claude and ~/.codex, a hook capture into the default data folder,
+# the MCP server and backup. Runs after each release (called from
+# release-please.yml) and on demand for any tag.
+#
+# The script tracks the latest release: a check for a newer feature is skipped
+# for older tags (at_least in the script). A PR that adds a check for an
+# unreleased feature must gate it the same way, since PR runs test the latest
+# release. macos-latest is arm64, so the darwin/amd64 archive isn't installed.
 on:
   workflow_call:
     inputs:
