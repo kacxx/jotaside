@@ -41,15 +41,20 @@ except OSError:
 settings = {
     "env": user.get("env", {}),
     # Edit is the TTL change, only inside the throwaway tree (macOS reports
-    # it as /private/tmp). jotaside done is the only shell command. Anything
-    # else has to ask, and the driver treats a permission prompt as a failed take.
+    # it as /private/tmp). The shell commands are jotaside done and read-only
+    # git in that tree, which "update jot" may use to check the change.
+    # Anything else has to ask, and the driver treats a permission prompt as a
+    # failed take.
     "permissions": {"allow": [
         "mcp__jotaside",
         f"Edit({work}/api/**)",
         f"Edit(/private{work}/api/**)",
         f"Bash({work}/bin/jotaside done *)",
         f"Bash(/private{work}/bin/jotaside done *)",
-    ]},
+    ] + [f"Bash(git {where}{sub}{args})"
+         for where in ("", f"-C {work}/api ", f"-C /private{work}/api ")
+         for sub in ("diff", "log", "status", "show")
+         for args in ("", " *")]},
     "hooks": {"UserPromptSubmit": [{"hooks": [
         {"type": "command", "command": f"{work}/bin/jotaside hook claude"}]}]},
 }
@@ -64,6 +69,14 @@ if [ ! -x "$work/venv/bin/python" ]; then
   python3 -m venv "$work/venv"
   "$work/venv/bin/pip" -q install pexpect
 fi
+
+# Run from inside a Claude Code session, the demo's Claude would inherit that
+# session's markers and show "Transcript saving is off" in every frame. Keep
+# the provider and model settings (CLAUDE_CODE_USE_*, ANTHROPIC_*), drop the rest.
+unset CLAUDECODE CLAUDE_PID CLAUDE_EFFORT
+for v in $(compgen -e | grep '^CLAUDE_CODE_'); do
+  case "$v" in CLAUDE_CODE_USE_*) ;; *) unset "$v" ;; esac
+done
 
 export JOT_DB="$work/demo.db"
 export DEMO_WORK="$work"
@@ -87,14 +100,27 @@ lines = open(path).read().splitlines()
 # <name>"), each word placed with a cursor move. The same shape is how
 # Claude draws "· done 2:50 PM" and the status bar, so a bare "·" plus
 # cursor moves is not enough.
+# Colour codes may follow the last word (Claude Code 2.1.310 resets the
+# colour there); they are kept.
 provider = re.compile(
     r"((?:Opus|Sonnet|Haiku)\x1b\[\d+G\d+(?:\.\d+)?)"
-    r"\x1b\[\d+G·(?:\x1b\[\d+G[^\x1b\r\n]+)+(?=\r)")
+    r"\x1b\[\d+G·(?:\x1b\[\d+G[^\x1b\r\n]+)+((?:\x1b\[[0-9;]*m)*)(?=\r)")
 model = re.compile(r"(?:Opus|Sonnet|Haiku)\x1b\[\d+G\d+(?:\.\d+)?")
+# Anything after "Opus 5.5 ·" left once the provider is removed means the
+# banner changed shape; the take fails rather than publish it.
+leftover = re.compile(r"(?:Opus|Sonnet|Haiku)\x1b\[\d+G\d+(?:\.\d+)?\x1b\[\d+G·")
 # Ctrl-U (clearing the replayed jot) draws this in the status bar. Blank it
 # in place so the column layout of that redraw stays intact.
 paste_hint = "Ctrl+Y to paste deleted text"
-resume = re.compile(r"(?:Press Ctrl-D again to exit|Resume this session with:)\r*\n(?:claude --resume \S+\r*\n)?")
+# The resume command printed after quitting. Claude Code 2.1.310 dims it, so
+# allow colour codes around each line.
+sgr = r"(?:\x1b\[[0-9;]*m)*"
+resume = re.compile(
+    sgr + r"Resume this session with:" + sgr + r"\r*\n"
+    r"(?:" + sgr + r"claude --resume [0-9a-f-]+" + sgr + r"\r*\n)?")
+# The exit hint, blanked in place like paste_hint. 2.1.310 places "to exit"
+# with a cursor move.
+exit_hint = re.compile(r"Press Ctrl-D again( |\x1b\[\d+G)to exit")
 removed = 0
 saw_model = False
 for i, line in enumerate(lines[1:], 1):
@@ -106,16 +132,19 @@ for i, line in enumerate(lines[1:], 1):
     if model.search(text):
         saw_model = True
     if provider.search(text):
-        text, n = provider.subn(r"\1", text)
+        text, n = provider.subn(r"\1\2", text)
         removed += n
         changed = n > 0
-        if provider.search(text):
-            sys.exit("demo: provider name is still in the banner; not writing the gif")
+    if leftover.search(text):
+        sys.exit("demo: provider name is still in the banner; not writing the gif")
     if paste_hint in text:
         text = text.replace(paste_hint, " " * len(paste_hint))
         changed = True
     if resume.search(text):
         text = resume.sub("", text)
+        changed = True
+    if exit_hint.search(text):
+        text = exit_hint.sub(lambda m: " " * 18 + m.group(1) + " " * 7, text)
         changed = True
     if changed:
         ev[2] = text

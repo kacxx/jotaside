@@ -117,7 +117,8 @@ def turn_done(limit=240):
         if b"LSP plugin" in screen or b"install this LSP" in screen:
             p.send("2")  # "No, not now" — do not persist a disable on the user account
             raise RuntimeError("LSP plugin recommendation appeared")
-        if b"don't ask again" in screen:
+        # Claude Code 2.1.310 writes "don’t" with a curly apostrophe.
+        if b"don't ask again" in screen or "don\u2019t ask again".encode() in screen:
             raise RuntimeError("permission prompt in the recording")
         if time.time() - last >= 1.5 and DONE.search(screen):
             return
