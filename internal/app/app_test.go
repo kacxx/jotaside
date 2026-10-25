@@ -175,3 +175,39 @@ func TestInboxOlder(t *testing.T) {
 		t.Fatalf("older 30: %v", ids(es))
 	}
 }
+
+func TestCaptureRepeatWindow(t *testing.T) {
+	ctx := context.Background()
+	svc, err := Open(filepath.Join(t.TempDir(), "jot.db"), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	svc.git = func(context.Context, string) gitctx.Info { return gitctx.Info{} }
+	now := time.Date(2026, 10, 22, 7, 44, 48, 90_000_000, time.UTC)
+	svc.now = func() time.Time { return now }
+	capture := func(text, session string, window time.Duration) (Entry, CaptureResult) {
+		t.Helper()
+		e, r, err := svc.CaptureOnce(ctx, CaptureRequest{Text: text, Source: "claude", SessionID: session, RepeatWindow: window})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return e, r
+	}
+
+	if e, r := capture("need to get the ArgoCD MCP added", "s1", time.Minute); r != Saved || e.ID != 1 {
+		t.Fatalf("first: r=%v id=%d", r, e.ID)
+	}
+	now = now.Add(35 * time.Millisecond)
+	if e, r := capture(" need  to get the ArgoCD MCP added", "s1", time.Minute); r != Repeated || e.ID != 1 {
+		t.Fatalf("queued repeat: r=%v id=%d", r, e.ID)
+	}
+	now = now.Add(61 * time.Second)
+	if e, r := capture("need to get the ArgoCD MCP added", "s1", time.Minute); r != Saved || e.ID != 2 {
+		t.Fatalf("after the window: r=%v id=%d", r, e.ID)
+	}
+	// No window (as for `jotaside add`): a repeat is saved.
+	if e, r := capture("need to get the ArgoCD MCP added", "s1", 0); r != Saved || e.ID != 3 {
+		t.Fatalf("no window: r=%v id=%d", r, e.ID)
+	}
+}

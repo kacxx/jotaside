@@ -435,3 +435,25 @@ AGENTS.md lists it as a fact that is easy to get wrong.
 **Revisit if:** `jotaside` turns out to collide with another tool. Don't bring
 back `jot` or `aside` as a binary or alias, and don't rename the data
 directory or `JOT_*` without a migration.
+
+## A repeated jot within a minute is saved once
+
+**Decided:** a hook capture whose text matches a jot the same session saved
+in the last 60 seconds, after trimming and collapsing whitespace and with case
+kept, is not saved again, unless that jot is already done. The prompt is still blocked, and the reply is
+`✓ Already jotted #N`, a success-style message, so nobody retries. It applies
+to Claude Code, Codex and Cursor captures with a session id, but not
+`jotaside add`, which has no session and where a repeat is deliberate.
+Settled in #8 (D1–D7).
+
+**Why:** a jot sent while Claude Code is busy is queued, and the hook runs
+only when the prompt leaves the queue, so there's no `✓ Jotted` until the turn
+ends. On 22 Oct 2026 a queued jot was re-sent and both were saved, 35 ms
+apart. The per-prompt key Cursor uses can't catch this: they are two prompts.
+Separately, scripted Claude Code 2.1.301+ sessions put a saved jot back in the
+input box, where Enter saves it again; that wasn't seen in normal use on
+2.1.310.
+
+**Revisit if:** duplicates with different wording still turn up in the
+database (fuzzy matching, D1), or someone needs to jot the same thing twice in
+a minute on purpose.

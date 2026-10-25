@@ -214,7 +214,7 @@ func TestClaudeCaptureInRepo(t *testing.T) {
 	}
 
 	// A second jot gets the next id.
-	_, b = runClaude(t, fixture(t, "claude", "capture", map[string]any{"cwd": repo}), open)
+	_, b = runClaude(t, fixture(t, "claude", "capture", map[string]any{"cwd": repo, "prompt": ">> and the refresh token TTL"}), open)
 	assertBlockedOK(t, b, 2)
 }
 
@@ -649,7 +649,7 @@ func TestCursorAndClaudeHooksSaveOnce(t *testing.T) {
 	}
 
 	// A new prompt in the same conversation has a new generation id.
-	_, c := runCursor(t, fixture(t, "cursor", "capture_single_root", map[string]any{"generation_id": "g2"}), open)
+	_, c := runCursor(t, fixture(t, "cursor", "capture_single_root", map[string]any{"generation_id": "g2", "prompt": ">> and the page size"}), open)
 	if c.UserMessage != "✓ Jotted #2" {
 		t.Fatalf("next prompt: %+v", c)
 	}
@@ -696,13 +696,60 @@ func TestCursorAndClaudeHooksSaveOnceConcurrently(t *testing.T) {
 	}
 }
 
-// Without a generation id there is nothing to match on: each hook saves.
-func TestCursorNoGenerationIDNotDeduplicated(t *testing.T) {
+// Without a generation id the prompt can't be matched, but the same jot in
+// the same conversation is still a repeat (#8): saved once, confirmed twice.
+// Cursor joins both hooks' messages, so the user sees "✓ Jotted #1" and
+// "✓ Already jotted #1" together. That's intended: it beats saving the jot
+// twice, and Cursor is unsupported anyway.
+func TestCursorNoGenerationIDRepeat(t *testing.T) {
 	open, path := tempDB(t)
 	payload := fixture(t, "cursor", "capture_single_root", map[string]any{"generation_id": ""})
-	runCursor(t, payload, open)
-	runCursor(t, payload, open)
+	_, a := runCursor(t, payload, open)
+	_, b := runCursor(t, payload, open)
+	if a.Continue || a.UserMessage != "✓ Jotted #1" || b.Continue || b.UserMessage != "✓ Already jotted #1" {
+		t.Fatalf("replies: %+v, %+v", a, b)
+	}
+	if es := entries(t, path); len(es) != 1 {
+		t.Fatalf("saved %d entries, want 1", len(es))
+	}
+}
+
+// A queued or re-sent jot reaches the hook again as a new prompt (#8). It is
+// still blocked, and confirmed with the first jot's number instead of saved.
+func TestClaudeRepeatedJotSavedOnce(t *testing.T) {
+	open, path := tempDB(t)
+	cwd := t.TempDir()
+	_, first := runClaude(t, fixture(t, "claude", "capture", map[string]any{"cwd": cwd}), open)
+	assertBlockedOK(t, first, 1)
+	for _, prompt := range []string{
+		">> token cache TTL looks too long, check with infra before shipping",
+		">>  token cache TTL looks  too long, check with infra before shipping ",
+	} {
+		_, b := runClaude(t, fixture(t, "claude", "capture", map[string]any{"cwd": cwd, "prompt": prompt}), open)
+		if b == nil || b.Decision != "block" || !b.HookSpecificOutput.SuppressOriginalPrompt {
+			t.Fatalf("%q: repeat must still block, got %+v", prompt, b)
+		}
+		if b.Reason != "✓ Already jotted #1" {
+			t.Fatalf("%q: reason = %q", prompt, b.Reason)
+		}
+	}
+	// Other text in the same session is a new jot.
+	_, other := runClaude(t, fixture(t, "claude", "capture", map[string]any{"cwd": cwd, "prompt": ">> something else"}), open)
+	assertBlockedOK(t, other, 2)
 	if es := entries(t, path); len(es) != 2 {
 		t.Fatalf("saved %d entries, want 2", len(es))
+	}
+}
+
+// Another session, or no session at all, has nothing to repeat.
+func TestClaudeRepeatNeedsSameSession(t *testing.T) {
+	open, path := tempDB(t)
+	cwd := t.TempDir()
+	for i, session := range []string{"s1", "s2", "", ""} {
+		_, b := runClaude(t, fixture(t, "claude", "capture", map[string]any{"cwd": cwd, "session_id": session}), open)
+		assertBlockedOK(t, b, int64(i+1))
+	}
+	if es := entries(t, path); len(es) != 4 {
+		t.Fatalf("saved %d entries, want 4", len(es))
 	}
 }

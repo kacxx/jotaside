@@ -297,30 +297,187 @@ func TestSetMetadata(t *testing.T) {
 	}
 }
 
-func TestInsertOnce(t *testing.T) {
+func TestInsertDedupPrompt(t *testing.T) {
 	ctx := context.Background()
 	s, _ := openTemp(t)
+	once := func(v string) Dedup { return Dedup{Key: "generation_id", Value: v} }
 
 	first := Entry{Text: "a", Source: "cursor", Metadata: json.RawMessage(`{"generation_id":"g1"}`)}
-	if ok, err := s.InsertOnce(ctx, &first, "generation_id", "g1"); !ok || err != nil || first.ID != 1 {
-		t.Fatalf("first: ok=%v id=%d err=%v", ok, first.ID, err)
+	if r, err := s.InsertDedup(ctx, &first, once("g1")); r != Inserted || err != nil || first.ID != 1 {
+		t.Fatalf("first: r=%v id=%d err=%v", r, first.ID, err)
 	}
 	dup := Entry{Text: "a again", Source: "cursor", Metadata: json.RawMessage(`{"generation_id":"g1"}`)}
-	if ok, err := s.InsertOnce(ctx, &dup, "generation_id", "g1"); ok || err != nil || dup.ID != 1 || dup.Text != "a" {
-		t.Fatalf("dup: ok=%v entry=%+v err=%v", ok, dup, err)
+	if r, err := s.InsertDedup(ctx, &dup, once("g1")); r != SamePrompt || err != nil || dup.ID != 1 || dup.Text != "a" {
+		t.Fatalf("dup: r=%v entry=%+v err=%v", r, dup, err)
 	}
 	// Another source, or another value, is a different prompt.
 	other := Entry{Text: "b", Source: "claude", Metadata: json.RawMessage(`{"generation_id":"g1"}`)}
-	if ok, err := s.InsertOnce(ctx, &other, "generation_id", "g1"); !ok || err != nil || other.ID != 2 {
-		t.Fatalf("other source: ok=%v id=%d err=%v", ok, other.ID, err)
+	if r, err := s.InsertDedup(ctx, &other, once("g1")); r != Inserted || err != nil || other.ID != 2 {
+		t.Fatalf("other source: r=%v id=%d err=%v", r, other.ID, err)
 	}
 	next := Entry{Text: "c", Source: "cursor", Metadata: json.RawMessage(`{"generation_id":"g2"}`)}
-	if ok, err := s.InsertOnce(ctx, &next, "generation_id", "g2"); !ok || err != nil || next.ID != 3 {
-		t.Fatalf("other value: ok=%v id=%d err=%v", ok, next.ID, err)
+	if r, err := s.InsertDedup(ctx, &next, once("g2")); r != Inserted || err != nil || next.ID != 3 {
+		t.Fatalf("other value: r=%v id=%d err=%v", r, next.ID, err)
 	}
-	for _, key := range []string{"", `a"b`, "a.b", "$"} {
-		if _, err := s.InsertOnce(ctx, &Entry{Text: "d", Source: "cursor"}, key, "v"); err == nil {
+	for _, key := range []string{`a"b`, "a.b", "$"} {
+		if _, err := s.InsertDedup(ctx, &Entry{Text: "d", Source: "cursor"}, Dedup{Key: key, Value: "v"}); err == nil {
 			t.Errorf("key %q: want error", key)
+		}
+	}
+}
+
+func TestInsertDedupRepeat(t *testing.T) {
+	ctx := context.Background()
+	s, _ := openTemp(t)
+	t0 := time.Date(2026, 10, 22, 7, 44, 48, 90_000_000, time.UTC)
+	window := time.Minute
+	insert := func(text, session string, at time.Time) (Entry, InsertResult) {
+		t.Helper()
+		e := Entry{Text: text, Source: "claude", SessionID: session, CreatedAt: at}
+		r, err := s.InsertDedup(ctx, &e, Dedup{Since: at.Add(-window)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return e, r
+	}
+
+	first, r := insert("need to get the ArgoCD MCP added", "s1", t0)
+	if r != Inserted || first.ID != 1 {
+		t.Fatalf("first: r=%v id=%d", r, first.ID)
+	}
+	for _, tc := range []struct {
+		name string
+		text string
+		at   time.Time
+	}{
+		{"queued pair, 35 ms apart", "need to get the ArgoCD MCP added", t0.Add(35 * time.Millisecond)},
+		{"re-sent seconds later", "need to get the ArgoCD MCP added", t0.Add(8 * time.Second)},
+		{"whitespace differs", "need  to get the\tArgoCD MCP added", t0.Add(20 * time.Second)},
+		{"at the edge of the window", "need to get the ArgoCD MCP added", t0.Add(window)},
+	} {
+		got, r := insert(tc.text, "s1", tc.at)
+		if r != Repeat || got.ID != 1 || got.Text != first.Text {
+			t.Errorf("%s: r=%v entry=%+v, want Repeat of #1", tc.name, r, got)
+		}
+	}
+	for _, tc := range []struct {
+		name    string
+		text    string
+		session string
+		at      time.Time
+	}{
+		{"after the window", "need to get the ArgoCD MCP added", "s1", t0.Add(window + time.Millisecond)},
+		{"another session", "need to get the ArgoCD MCP added", "s2", t0.Add(time.Second)},
+		{"different case", "Need to get the ArgoCD MCP added", "s1", t0.Add(2 * time.Second)},
+		{"different text", "need to get the ArgoCD MCP removed", "s1", t0.Add(3 * time.Second)},
+	} {
+		if _, r := insert(tc.text, tc.session, tc.at); r != Inserted {
+			t.Errorf("%s: r=%v, want Inserted", tc.name, r)
+		}
+	}
+	// A done jot isn't a repeat: jotting it again brings it back.
+	closed, _ := insert("check the TTL", "s3", t0)
+	if _, err := s.Done(ctx, []int64{closed.ID}, "", t0); err != nil {
+		t.Fatal(err)
+	}
+	if again, r := insert("check the TTL", "s3", t0.Add(4*time.Second)); r != Inserted || again.ID == closed.ID || again.Status != StatusInbox {
+		t.Errorf("after done: r=%v entry=%+v, want a new inbox entry", r, again)
+	}
+	// Without a session there is nothing to compare against.
+	for i := range 2 {
+		e := Entry{Text: "same", Source: "cli", CreatedAt: t0}
+		if r, err := s.InsertDedup(ctx, &e, Dedup{Since: t0.Add(-window)}); r != Inserted || err != nil {
+			t.Fatalf("no session #%d: r=%v err=%v", i, r, err)
+		}
+	}
+}
+
+func TestInsertDedupBoth(t *testing.T) {
+	ctx := context.Background()
+	s, _ := openTemp(t)
+	t0 := time.Date(2026, 10, 22, 7, 44, 48, 0, time.UTC)
+	add := func(gen string, at time.Time) (Entry, InsertResult) {
+		t.Helper()
+		e := Entry{Text: "x", Source: "cursor", SessionID: "c1", CreatedAt: at,
+			Metadata: json.RawMessage(`{"generation_id":"` + gen + `"}`)}
+		r, err := s.InsertDedup(ctx, &e, Dedup{Key: "generation_id", Value: gen, Since: at.Add(-time.Minute)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return e, r
+	}
+	if _, r := add("g1", t0); r != Inserted {
+		t.Fatalf("first: %v", r)
+	}
+	// The same prompt wins over a repeat: the second hook stays silent.
+	if e, r := add("g1", t0.Add(time.Millisecond)); r != SamePrompt || e.ID != 1 {
+		t.Fatalf("same prompt: r=%v id=%d", r, e.ID)
+	}
+	if e, r := add("g2", t0.Add(5*time.Second)); r != Repeat || e.ID != 1 {
+		t.Fatalf("new prompt, same text: r=%v id=%d", r, e.ID)
+	}
+}
+
+// Hooks for two queued prompts can run at once. The repeat check and the
+// insert share a transaction, so only one saves.
+func TestInsertDedupRepeatConcurrently(t *testing.T) {
+	ctx := context.Background()
+	_, path := openTemp(t)
+	t0 := time.Date(2026, 10, 22, 7, 44, 48, 0, time.UTC)
+	const n = 8
+	results := make(chan InsertResult, n)
+	errs := make(chan error, n)
+	for i := range n {
+		go func() {
+			// A store per goroutine, as each hook is its own process.
+			s, err := Open(path, 5*time.Second)
+			if err != nil {
+				errs <- err
+				return
+			}
+			defer s.Close()
+			at := t0.Add(time.Duration(i) * time.Millisecond)
+			e := Entry{Text: "same jot", Source: "claude", SessionID: "s1", CreatedAt: at}
+			r, err := s.InsertDedup(ctx, &e, Dedup{Since: at.Add(-time.Minute)})
+			if err != nil {
+				errs <- err
+				return
+			}
+			results <- r
+		}()
+	}
+	inserted := 0
+	for range n {
+		select {
+		case err := <-errs:
+			t.Fatal(err)
+		case r := <-results:
+			if r == Inserted {
+				inserted++
+			} else if r != Repeat {
+				t.Errorf("result %v", r)
+			}
+		}
+	}
+	if inserted != 1 {
+		t.Errorf("%d inserts, want 1", inserted)
+	}
+}
+
+func TestSameJotText(t *testing.T) {
+	for _, tc := range []struct {
+		a, b string
+		want bool
+	}{
+		{"a b", "a b", true},
+		{" a  b ", "a b", true},
+		{"a\tb\nc", "a b c", true},
+		{"a\u00a0b", "a b", true},
+		{"a b", "A b", false},
+		{"a b", "ab", false},
+	} {
+		if got := sameJotText(tc.a, tc.b); got != tc.want {
+			t.Errorf("sameJotText(%q, %q) = %v, want %v", tc.a, tc.b, got, tc.want)
 		}
 	}
 }

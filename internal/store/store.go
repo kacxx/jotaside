@@ -260,56 +260,107 @@ func (s *Store) Insert(ctx context.Context, e *Entry) (int64, error) {
 	return id, nil
 }
 
-// InsertOnce stores e unless an entry with the same source already has
-// metadata[key] == value, in which case *e is replaced by that entry. The
-// check and the insert are one statement, so two processes saving the same
-// prompt at once store it once. It reports whether e was inserted. key must be
-// letters, digits and underscores, as it is spliced into a JSON path.
+// Dedup says which earlier entries make an insert a duplicate. The zero value
+// checks nothing.
+type Dedup struct {
+	// Key and Value, if Value is set, name the prompt: an entry with the same
+	// source and metadata[Key] == Value is the same prompt saved by another
+	// hook. Key must be letters, digits and underscores, as it is spliced into
+	// a JSON path.
+	Key, Value string
+	// Since, if set, makes an inbox entry from the same session created at or
+	// after Since with the same text, ignoring whitespace differences, a
+	// repeat. A done entry doesn't count: jotting it again brings it back.
+	// Entries without a session are never repeats.
+	Since time.Time
+}
+
+// InsertResult says what InsertDedup did.
+type InsertResult int
+
+const (
+	// Inserted means the entry was saved.
+	Inserted InsertResult = iota
+	// SamePrompt means another hook already saved this prompt (Dedup.Key).
+	SamePrompt
+	// Repeat means the session saved the same text recently (Dedup.Since).
+	Repeat
+)
+
+// InsertDedup stores e unless d finds a duplicate, in which case *e is
+// replaced by the earlier entry. A same-prompt match wins over a repeat. The
+// checks and the insert run in one BEGIN IMMEDIATE transaction (see _txlock in
+// DSN), so two processes saving the same jot at once store it once.
 //
-// The check scans entries: metadata is not indexed. Only jots reach it, and a
-// personal jot database stays small.
-func (s *Store) InsertOnce(ctx context.Context, e *Entry, key, value string) (bool, error) {
-	if !jsonKey.MatchString(key) {
-		return false, fmt.Errorf("invalid metadata key %q", key)
+// The checks scan entries: metadata is not indexed and text is compared in
+// Go. Only jots reach them, and a personal jot database stays small.
+func (s *Store) InsertDedup(ctx context.Context, e *Entry, d Dedup) (InsertResult, error) {
+	if d.Value != "" && !jsonKey.MatchString(d.Key) {
+		return Inserted, fmt.Errorf("invalid metadata key %q", d.Key)
 	}
 	meta := e.prepare()
-	path := `$."` + key + `"`
-	res, err := s.db.ExecContext(ctx, `INSERT INTO entries
-		(text, created_at, status, source, session_id, cwd, repo_root, repo_name, branch, commit_sha, metadata)
-		SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-		WHERE NOT EXISTS (SELECT 1 FROM entries WHERE source = ? AND json_extract(metadata, ?) = ?)`,
-		e.Text, e.CreatedAt.UTC().Format(timeLayout), e.Status, e.Source, e.SessionID, e.Cwd,
-		e.RepoRoot, e.RepoName, e.Branch, e.CommitSHA, meta,
-		e.Source, path, value)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
-		return false, err
+		return Inserted, err
 	}
-	n, err := res.RowsAffected()
-	if err != nil {
-		return false, err
-	}
-	if n == 1 {
-		id, err := res.LastInsertId()
+	defer func() { _ = tx.Rollback() }() // after Commit this is a no-op returning ErrTxDone
+	if d.Value != "" {
+		rows, err := tx.QueryContext(ctx, `SELECT `+columns+` FROM entries
+			WHERE source = ? AND json_extract(metadata, ?) = ? ORDER BY id LIMIT 1`,
+			e.Source, `$."`+d.Key+`"`, d.Value)
 		if err != nil {
-			return false, err
+			return Inserted, err
 		}
-		e.ID = id
-		return true, nil
+		es, err := scan(rows)
+		if err != nil {
+			return Inserted, err
+		}
+		if len(es) > 0 {
+			*e = es[0]
+			return SamePrompt, nil
+		}
 	}
-	rows, err := s.db.QueryContext(ctx, `SELECT `+columns+` FROM entries
-		WHERE source = ? AND json_extract(metadata, ?) = ? ORDER BY id LIMIT 1`, e.Source, path, value)
+	if !d.Since.IsZero() && e.SessionID != "" {
+		rows, err := tx.QueryContext(ctx, `SELECT `+columns+` FROM entries
+			WHERE session_id = ? AND status = ? AND created_at >= ? ORDER BY id`,
+			e.SessionID, StatusInbox, d.Since.UTC().Format(timeLayout))
+		if err != nil {
+			return Inserted, err
+		}
+		es, err := scan(rows)
+		if err != nil {
+			return Inserted, err
+		}
+		for _, prev := range es {
+			if sameJotText(prev.Text, e.Text) {
+				*e = prev
+				return Repeat, nil
+			}
+		}
+	}
+	res, err := tx.ExecContext(ctx, `INSERT INTO entries
+		(text, created_at, status, source, session_id, cwd, repo_root, repo_name, branch, commit_sha, metadata)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.Text, e.CreatedAt.UTC().Format(timeLayout), e.Status, e.Source, e.SessionID, e.Cwd,
+		e.RepoRoot, e.RepoName, e.Branch, e.CommitSHA, meta)
 	if err != nil {
-		return false, err
+		return Inserted, err
 	}
-	es, err := scan(rows)
+	id, err := res.LastInsertId()
 	if err != nil {
-		return false, err
+		return Inserted, err
 	}
-	if len(es) == 0 {
-		return false, ErrNotFound
+	if err := tx.Commit(); err != nil {
+		return Inserted, err
 	}
-	*e = es[0]
-	return false, nil
+	e.ID = id
+	return Inserted, nil
+}
+
+// sameJotText reports whether two jots say the same thing: equal once runs of
+// whitespace are collapsed and the ends trimmed. Case counts.
+func sameJotText(a, b string) bool {
+	return strings.Join(strings.Fields(a), " ") == strings.Join(strings.Fields(b), " ")
 }
 
 var jsonKey = regexp.MustCompile(`^[A-Za-z0-9_]+$`)

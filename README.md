@@ -225,8 +225,11 @@ Only a prompt that **starts** with `>>`, a space and then text is a jot (extra
 spaces are fine). `>>x`, ` >> x` and `a >> b` go to the model as normal. To
 send a prompt that starts with `>> `, put a space or a backslash in front.
 
-In Claude Code or Codex, if a jot shows up as a chat message instead of
-`✓ Jotted`, resend it once the agent is idle.
+In Claude Code or Codex, a jot sent while the agent is busy is saved and
+confirmed only when the agent finishes its turn, so don't re-send it while you
+wait (if you do, the same jot from the same chat within a minute isn't saved
+twice: you see `✓ Already jotted #N`). If it shows up as a chat message
+instead, it wasn't saved: resend it once the agent is idle.
 
 ### Review
 

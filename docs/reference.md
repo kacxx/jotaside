@@ -26,11 +26,20 @@ the jot is saved. Everything else passes through untouched:
 Need to send a prompt that starts with `>> ` to the model? Prefix it with a
 space or a backslash.
 
-In Claude Code or Codex, if a jot shows up as a chat message instead of
-`✓ Jotted`, resend it once the agent is idle. A prompt sent while the agent is
-busy can be queued and merged with other prompts, and only a jot at the start
-of a prompt is matched. Don't resend in Cursor: it keeps the jot in the chat
-and sends it with your next message anyway (see [cursor.md](cursor.md)).
+In Claude Code or Codex, a jot sent while the agent is busy is saved and
+confirmed only when the agent finishes its turn, so don't re-send it while you
+wait. A repeat is caught anyway: when a hook captures a jot whose text matches
+one the same chat saved in the last minute and that is still in the inbox,
+ignoring differences in spaces but not case, it is blocked but not saved
+again, and the reply is `✓ Already jotted #N` with the first jot's number. A
+jot already marked done doesn't count, so jotting it again brings it back.
+`jotaside add` has no chat, so it always saves.
+
+If a jot shows up as a chat message instead of `✓ Jotted`, it wasn't saved:
+resend it once the agent is idle. A prompt sent while the agent is busy can be
+queued and merged with other prompts, and only a jot at the start of a prompt
+is matched. Don't resend in Cursor: it keeps the jot in the chat and sends it
+with your next message anyway (see [cursor.md](cursor.md)).
 
 ## Failure behaviour
 

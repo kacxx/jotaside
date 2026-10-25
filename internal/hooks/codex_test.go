@@ -167,3 +167,16 @@ func TestCodexOversized(t *testing.T) {
 		t.Fatalf("oversized other event: %q", out)
 	}
 }
+
+func TestCodexRepeatedJotSavedOnce(t *testing.T) {
+	open, path := tempDB(t)
+	payload := fixture(t, "codex", "capture", map[string]any{"cwd": t.TempDir()})
+	_, a := runCodex(t, payload, open)
+	_, b := runCodex(t, payload, open)
+	if a == nil || a.Reason != "✓ Jotted #1" || b == nil || b.Reason != "✓ Already jotted #1" {
+		t.Fatalf("replies: %+v, %+v", a, b)
+	}
+	if es := entries(t, path); len(es) != 1 {
+		t.Fatalf("saved %d entries, want 1", len(es))
+	}
+}
