@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.1](https://github.com/kacxx/jotaside/compare/v0.1.0...v0.1.1) (2026-10-25)
+
+
+### Bug Fixes
+
+* save a repeated jot once and confirm it as already jotted ([#16](https://github.com/kacxx/jotaside/issues/16)) ([efb387a](https://github.com/kacxx/jotaside/commit/efb387acbb2e8d6040bc1310caafe3c3c710a1ca))
+
 ## 0.1.0 (2026-10-24)
 
 
