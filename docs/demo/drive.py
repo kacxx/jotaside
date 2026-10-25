@@ -96,7 +96,9 @@ def idle(quiet=2.5, limit=120):
 # between the words, so the match has to ignore those moves. Silence alone is
 # not the end of the turn: "esc to interrupt" stays up through silent thinking.
 ANSI = re.compile(rb"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*(?:\x07|\x1b\\)|\x1b.")
-DONE = re.compile(rb"for\s*\d+s.{0,8}done")
+# "for 13s · done", "for 1m 12s · done", and the same with the spaces
+# removed by cursor-move drawing.
+DONE = re.compile(rb"for\s*(?:\d+m\s*)?\d+s.{0,8}done")
 
 
 def visible(buf):
@@ -180,8 +182,9 @@ def jot(text):
     wait_for(rb"Jotted", timeout=30)
     pause(0.8)  # leave the "✓ Jotted" line readable
     # Scripted sessions on Claude Code 2.1.301+ put the jot back in the input
-    # box (#130); clear it so the next prompt isn't appended to it. Don't sit
-    # on the "Ctrl+Y to paste deleted text" hint that Ctrl-U raises.
+    # box (#8; not seen in a normal session on 2.1.310); clear it so the next
+    # prompt isn't appended to it. Don't sit on the "Ctrl+Y to paste deleted
+    # text" hint that Ctrl-U raises.
     p.send("\x15")
     pause(0.4)
 
