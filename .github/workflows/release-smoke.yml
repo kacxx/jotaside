@@ -1,0 +1,52 @@
+name: Release smoke test
+
+# Installs a published release the way the README tells a new user to, on
+# clean macOS, Linux and Windows runners: download, checksum, setup into the
+# default ~/.claude and ~/.codex, a hook capture into the default data folder,
+# the MCP server and backup. Runs after each release (called from
+# release-please.yml) and on demand for any tag.
+#
+# The script tracks the latest release: a check for a newer feature is skipped
+# for older tags (at_least in the script). A PR that adds a check for an
+# unreleased feature must gate it the same way, since PR runs test the latest
+# release. macos-latest is arm64, so the darwin/amd64 archive isn't installed.
+on:
+  workflow_call:
+    inputs:
+      tag:
+        type: string
+        required: true
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to test (empty for the latest release)
+        type: string
+        required: false
+  # A change to the test itself is checked against the latest release.
+  pull_request:
+    paths:
+      - test/release/**
+      - .github/workflows/release-smoke.yml
+
+permissions:
+  contents: read
+
+jobs:
+  smoke:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      # Only for the script: the release under test is downloaded, not built.
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install the release and check it
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+        run: bash test/release/smoke.sh
