@@ -96,7 +96,9 @@ def idle(quiet=2.5, limit=120):
 # between the words, so the match has to ignore those moves. Silence alone is
 # not the end of the turn: "esc to interrupt" stays up through silent thinking.
 ANSI = re.compile(rb"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07]*(?:\x07|\x1b\\)|\x1b.")
-DONE = re.compile(rb"for\s*\d+s.{0,8}done")
+# "for 13s · done", "for 1m 12s · done", and the same with the spaces
+# removed by cursor-move drawing.
+DONE = re.compile(rb"for\s*(?:\d+m\s*)?\d+s.{0,8}done")
 
 
 def visible(buf):

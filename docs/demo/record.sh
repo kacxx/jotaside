@@ -83,22 +83,34 @@ python3 - "$work/demo.cast" <<'EOF'
 import json, re, sys
 path = sys.argv[1]
 lines = open(path).read().splitlines()
-provider = re.compile(r"\x1b\[\d+G·(?:\x1b\[\d+G[^\x1b\r\n]+)+(?=\r)")
+# The provider is the words after the model on its own line ("Opus 5.5 ·
+# <name>"), each word placed with a cursor move. The same shape is how
+# Claude draws "· done 2:50 PM" and the status bar, so a bare "·" plus
+# cursor moves is not enough.
+provider = re.compile(
+    r"((?:Opus|Sonnet|Haiku)\x1b\[\d+G\d+(?:\.\d+)?)"
+    r"\x1b\[\d+G·(?:\x1b\[\d+G[^\x1b\r\n]+)+(?=\r)")
+model = re.compile(r"(?:Opus|Sonnet|Haiku)\x1b\[\d+G\d+(?:\.\d+)?")
 # Ctrl-U (clearing the replayed jot) draws this in the status bar. Blank it
 # in place so the column layout of that redraw stays intact.
 paste_hint = "Ctrl+Y to paste deleted text"
 resume = re.compile(r"(?:Press Ctrl-D again to exit|Resume this session with:)\r*\n(?:claude --resume \S+\r*\n)?")
 removed = 0
+saw_model = False
 for i, line in enumerate(lines[1:], 1):
     ev = json.loads(line)
     if ev[1] != "o":
         continue
     text = ev[2]
     changed = False
+    if model.search(text):
+        saw_model = True
     if provider.search(text):
-        text, n = provider.subn("", text)
+        text, n = provider.subn(r"\1", text)
         removed += n
         changed = n > 0
+        if provider.search(text):
+            sys.exit("demo: provider name is still in the banner; not writing the gif")
     if paste_hint in text:
         text = text.replace(paste_hint, " " * len(paste_hint))
         changed = True
@@ -108,8 +120,8 @@ for i, line in enumerate(lines[1:], 1):
     if changed:
         ev[2] = text
         lines[i] = json.dumps(ev, ensure_ascii=False)
-if removed == 0:
-    sys.exit("demo: provider name was not removed from the banner; not writing the gif")
+if not saw_model:
+    sys.exit("demo: model banner was not found; not writing the gif")
 open(path, "w").write("\n".join(lines) + "\n")
 EOF
 agg --theme monokai --speed 1.6 --idle-time-limit 1.5 --last-frame-duration 5 \
