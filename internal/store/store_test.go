@@ -375,6 +375,14 @@ func TestInsertDedupRepeat(t *testing.T) {
 			t.Errorf("%s: r=%v, want Inserted", tc.name, r)
 		}
 	}
+	// A done jot isn't a repeat: jotting it again brings it back.
+	closed, _ := insert("check the TTL", "s3", t0)
+	if _, err := s.Done(ctx, []int64{closed.ID}, "", t0); err != nil {
+		t.Fatal(err)
+	}
+	if again, r := insert("check the TTL", "s3", t0.Add(4*time.Second)); r != Inserted || again.ID == closed.ID || again.Status != StatusInbox {
+		t.Errorf("after done: r=%v entry=%+v, want a new inbox entry", r, again)
+	}
 	// Without a session there is nothing to compare against.
 	for i := range 2 {
 		e := Entry{Text: "same", Source: "cli", CreatedAt: t0}
@@ -407,6 +415,52 @@ func TestInsertDedupBoth(t *testing.T) {
 	}
 	if e, r := add("g2", t0.Add(5*time.Second)); r != Repeat || e.ID != 1 {
 		t.Fatalf("new prompt, same text: r=%v id=%d", r, e.ID)
+	}
+}
+
+// Hooks for two queued prompts can run at once. The repeat check and the
+// insert share a transaction, so only one saves.
+func TestInsertDedupRepeatConcurrently(t *testing.T) {
+	ctx := context.Background()
+	_, path := openTemp(t)
+	t0 := time.Date(2026, 10, 22, 7, 44, 48, 0, time.UTC)
+	const n = 8
+	results := make(chan InsertResult, n)
+	errs := make(chan error, n)
+	for i := range n {
+		go func() {
+			// A store per goroutine, as each hook is its own process.
+			s, err := Open(path, 5*time.Second)
+			if err != nil {
+				errs <- err
+				return
+			}
+			defer s.Close()
+			at := t0.Add(time.Duration(i) * time.Millisecond)
+			e := Entry{Text: "same jot", Source: "claude", SessionID: "s1", CreatedAt: at}
+			r, err := s.InsertDedup(ctx, &e, Dedup{Since: at.Add(-time.Minute)})
+			if err != nil {
+				errs <- err
+				return
+			}
+			results <- r
+		}()
+	}
+	inserted := 0
+	for range n {
+		select {
+		case err := <-errs:
+			t.Fatal(err)
+		case r := <-results:
+			if r == Inserted {
+				inserted++
+			} else if r != Repeat {
+				t.Errorf("result %v", r)
+			}
+		}
+	}
+	if inserted != 1 {
+		t.Errorf("%d inserts, want 1", inserted)
 	}
 }
 

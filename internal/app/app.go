@@ -71,7 +71,8 @@ type CaptureRequest struct {
 	OnceKey string
 	// RepeatWindow, if positive, returns the earlier entry instead of saving
 	// when the same SessionID saved the same text (ignoring whitespace
-	// differences) within the window: a queued or re-sent jot (#8).
+	// differences) within the window and it's still in the inbox: a queued or
+	// re-sent jot (#8).
 	RepeatWindow time.Duration
 }
 
@@ -95,7 +96,7 @@ func (s *Service) Capture(ctx context.Context, req CaptureRequest) (Entry, error
 
 // CaptureOnce is Capture that also reports whether a new entry was saved.
 // When req.OnceKey or req.RepeatWindow matched an existing entry, that entry
-// is returned instead.
+// is returned instead. The result means nothing when err is set.
 func (s *Service) CaptureOnce(ctx context.Context, req CaptureRequest) (Entry, CaptureResult, error) {
 	text := strings.TrimSpace(req.Text)
 	if text == "" {

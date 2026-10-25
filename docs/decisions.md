@@ -440,7 +440,7 @@ directory or `JOT_*` without a migration.
 
 **Decided:** a hook capture whose text matches a jot the same session saved
 in the last 60 seconds, after trimming and collapsing whitespace and with case
-kept, is not saved again. The prompt is still blocked, and the reply is
+kept, is not saved again, unless that jot is already done. The prompt is still blocked, and the reply is
 `✓ Already jotted #N`, a success-style message, so nobody retries. It applies
 to Claude Code, Codex and Cursor captures with a session id, but not
 `jotaside add`, which has no session and where a repeat is deliberate.

@@ -698,6 +698,9 @@ func TestCursorAndClaudeHooksSaveOnceConcurrently(t *testing.T) {
 
 // Without a generation id the prompt can't be matched, but the same jot in
 // the same conversation is still a repeat (#8): saved once, confirmed twice.
+// Cursor joins both hooks' messages, so the user sees "✓ Jotted #1" and
+// "✓ Already jotted #1" together. That's intended: it beats saving the jot
+// twice, and Cursor is unsupported anyway.
 func TestCursorNoGenerationIDRepeat(t *testing.T) {
 	open, path := tempDB(t)
 	payload := fixture(t, "cursor", "capture_single_root", map[string]any{"generation_id": ""})

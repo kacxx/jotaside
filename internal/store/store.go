@@ -268,8 +268,9 @@ type Dedup struct {
 	// hook. Key must be letters, digits and underscores, as it is spliced into
 	// a JSON path.
 	Key, Value string
-	// Since, if set, makes an entry from the same session created at or after
-	// Since with the same text, ignoring whitespace differences, a repeat.
+	// Since, if set, makes an inbox entry from the same session created at or
+	// after Since with the same text, ignoring whitespace differences, a
+	// repeat. A done entry doesn't count: jotting it again brings it back.
 	// Entries without a session are never repeats.
 	Since time.Time
 }
@@ -321,8 +322,8 @@ func (s *Store) InsertDedup(ctx context.Context, e *Entry, d Dedup) (InsertResul
 	}
 	if !d.Since.IsZero() && e.SessionID != "" {
 		rows, err := tx.QueryContext(ctx, `SELECT `+columns+` FROM entries
-			WHERE session_id = ? AND created_at >= ? ORDER BY id`,
-			e.SessionID, d.Since.UTC().Format(timeLayout))
+			WHERE session_id = ? AND status = ? AND created_at >= ? ORDER BY id`,
+			e.SessionID, StatusInbox, d.Since.UTC().Format(timeLayout))
 		if err != nil {
 			return Inserted, err
 		}
