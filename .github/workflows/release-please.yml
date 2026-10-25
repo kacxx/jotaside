@@ -46,3 +46,13 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # Installs the new release from its archives on clean runners, as a new
+  # user would. Called here for the same reason as goreleaser above.
+  smoke:
+    needs: [release-please, goreleaser]
+    uses: ./.github/workflows/release-smoke.yml
+    permissions:
+      contents: read
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}

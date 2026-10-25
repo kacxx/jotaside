@@ -49,9 +49,11 @@ go vet ./...
 go test -race ./...
 golangci-lint run          # v2.14.0, config in .golangci.yml
 bash test/e2e/run.sh       # end-to-end, throwaway database
+TAG=v0.1.1 bash test/release/smoke.sh   # install a published release as a new user would
 ```
 
-CI runs all of these on Linux. On Windows it runs `go vet` and `go test`
+CI runs all of these on Linux. The release smoke test runs after each release
+on macOS, Linux and Windows (`release-smoke.yml`). On Windows it runs `go vet` and `go test`
 (without `-race`, which needs cgo).
 
 `go install ./cmd/jotaside` installs to `$(go env GOPATH)/bin`, which is
