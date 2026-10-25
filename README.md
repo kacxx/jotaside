@@ -134,7 +134,7 @@ agent restarts, so restart Claude Desktop, Codex and any open agent sessions.
 ### Coming from aside
 
 jotaside was called `aside` (and before that `jot`), from the repo
-[kacxx/aside-jot](https://github.com/kacxx/aside-jot); its v0.7.0 is the last
+kacxx/aside-jot (now private and archived); its v0.7.0 is the last
 `aside` release. Your jots stay where they are: the database folder is still
 named `jot` and the `JOT_*` variables are unchanged. To switch:
 

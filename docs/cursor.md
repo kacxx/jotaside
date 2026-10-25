@@ -3,7 +3,7 @@
 > **jotaside does not work with Cursor, and Cursor support is paused.** The hook
 > saves the jot and blocks that turn, but Cursor keeps the blocked prompt in the
 > chat and sends it to the model with your next message there
-> ([#25](https://github.com/kacxx/aside-jot/issues/25)). This is a
+> (aside-jot #25). This is a
 > [known Cursor bug](https://forum.cursor.com/t/prompt-blocked-by-a-beforesubmitprompt-hook-is-still-sent-to-the-model-with-the-next-message/173565),
 > and jotaside can't work around it: the hook only decides whether a prompt is
 > sent now. Don't rely on `>>` in Cursor; jot from a terminal with `jotaside add`
@@ -41,7 +41,7 @@ them on `beforeSubmitPrompt` next to its own, sending them
 `hook_event_name: "beforeSubmitPrompt"`. On 3.23.12, with both hooks installed
 and the Claude hook printing nothing, the prompt reached the model even though
 `jotaside hook cursor` replied `{"continue":false}`. With the Claude hook removed,
-the jot was blocked ([#23](https://github.com/kacxx/aside-jot/issues/23)). So on
+the jot was blocked (aside-jot #23). So on
 that event `jotaside hook claude` now replies exactly as `jotaside hook cursor` does:
 it blocks jots and answers `{"continue":true}` to every other prompt. Either
 hook is enough in Cursor, and both together are safe. If both run on one
@@ -91,4 +91,4 @@ blocked and saved once in each setup:
 - Only `jotaside hook cursor`: jot #15.
 - After the both-hooks and Claude-only runs, the next message in that chat sent
   the blocked jot to the model with it
-  ([#25](https://github.com/kacxx/aside-jot/issues/25)).
+  (aside-jot #25).

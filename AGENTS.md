@@ -74,7 +74,7 @@ records the results for the initial version.
   without a migration. `jotaside setup` replaces hooks written under either
   old name (`previousNames` in `internal/setup/config.go`) and points out an
   MCP server still registered as `aside` or `jot`. Issues and PRs from before
-  the rename are in [kacxx/aside-jot](https://github.com/kacxx/aside-jot).
+  the rename are in kacxx/aside-jot (now private and archived).
 - **Pass-through must be silent.** For an ordinary prompt, the Claude Code and
   Codex hooks print nothing: both add hook stdout to the model's context.
   Cursor's hook prints `{"continue":true}`.
@@ -93,7 +93,7 @@ records the results for the initial version.
   the jot carries a message.
 - **Cursor sends blocked prompts anyway.** It keeps a blocked prompt in the
   chat and sends it with the next message. This is a Cursor bug
-  ([#25](https://github.com/kacxx/aside-jot/issues/25)) that jotaside can't work
+  (aside-jot #25) that jotaside can't work
   around, which is why Cursor is unsupported. Don't test jots in a Cursor chat
   you care about.
 - **Resume directories differ by agent.** Claude Code stores a session under
@@ -108,7 +108,7 @@ records the results for the initial version.
   are undocumented, and a terminal `claude` started inside a Desktop session
   may inherit them, so check the id against Desktop's session file
   (`cliSessionId`) before building a link from it
-  ([#44](https://github.com/kacxx/aside-jot/issues/44)); `internal/app/links.go`
+  (aside-jot #44); `internal/app/links.go`
   does this and builds `open_url`; `jotaside open` opens it, because clicking
   the link in a Desktop chat doesn't work.
 - **The MCP server is read-only by design.** Through it, agents can read jots
@@ -146,5 +146,5 @@ records the results for the initial version.
 ## Current work
 
 Open issues are the roadmap and the status: `gh issue list -R kacxx/jotaside`
-(issues from before the rename: `-R kacxx/aside-jot`).
+(issues from before the rename are in kacxx/aside-jot, now private and archived).
 Don't keep status in this file.

@@ -2,12 +2,12 @@
 
 > Written before the tool was renamed `jotaside` (2026-10-24). Names here are
 > the ones of the time (the `jot` or `aside` command, repo kacxx/aside-jot), and
-> issue and PR numbers refer to [kacxx/aside-jot](https://github.com/kacxx/aside-jot).
+> issue and PR numbers refer to kacxx/aside-jot (now private and archived).
 
 Status: **decided**. Ready to merge, then slice into tickets.
 Source: #110
 
-Decisions D1 to D7 come from the grill on #110 (2026-10-15), recorded in [the decisions comment](https://github.com/kacxx/aside-jot/issues/110#issuecomment-6187065673). D7 was revised the same day, after this doc's fact-check found its premise wrong. The owner's review of PR #112 revised D4's wording and D7 again, and added D8 and D9. Question 3 in the issue (what happens to `aside setup claude`) no longer applies: under D4 the plugin carries no hook or MCP server.
+Decisions D1 to D7 come from the grill on #110 (2026-10-15), recorded in the decisions comment on aside-jot #110. D7 was revised the same day, after this doc's fact-check found its premise wrong. The owner's review of PR #112 revised D4's wording and D7 again, and added D8 and D9. Question 3 in the issue (what happens to `aside setup claude`) no longer applies: under D4 the plugin carries no hook or MCP server.
 
 ## Problem
 

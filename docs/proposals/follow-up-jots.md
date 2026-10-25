@@ -2,7 +2,7 @@
 
 > Written before the tool was renamed `jotaside` (2026-10-24). Names here are
 > the ones of the time (the `jot` or `aside` command, repo kacxx/aside-jot), and
-> issue and PR numbers refer to [kacxx/aside-jot](https://github.com/kacxx/aside-jot).
+> issue and PR numbers refer to kacxx/aside-jot (now private and archived).
 
 Status: **decided**. Sliced into #97, #98, #99 and #102 (D9's CLI fix, split out of #98).
 Source: #95
@@ -152,7 +152,7 @@ Defaults the decisions leave to the implementer:
 | `"text" \| aside add` in Windows PowerShell 5.1 stored U+FEFF | ✅ | owner, Windows results on #77 ("BOM from a PowerShell pipe is stored") |
 | #80 left the PowerShell-pipe BOM for later | ✅ | #80 description ("Left for later: the BOM from a PowerShell pipe into `aside add`") |
 | Windows PowerShell 5.1 pipes to native programs in `$OutputEncoding`, which defaults to ASCII | ✅ | [about_Preference_Variables (5.1)](https://learn.microsoft.com/en-us/powershell/module/microsoft.powershell.core/about/about_preference_variables?view=powershell-5.1#outputencoding): "Default: ASCIIEncoding object" |
-| A here-string piped into `aside.exe add` in Windows PowerShell 5.1 arrives with a leading BOM under the default ASCII `$OutputEncoding`, not only under UTF-8 | ⚠️ the BOM was seen with the setting believed to be the default, but the session's actual value wasn't recorded, and a PowerShell profile can change it; Microsoft's docs say ASCII has no BOM to send. To confirm: in `powershell -NoProfile`, check `$OutputEncoding.WebName` is `us-ascii`, then pipe a here-string into `aside.exe add` and look for U+FEFF. Nothing depends on it: `aside add` strips the BOM either way | owner, [Windows run on #106](https://github.com/kacxx/aside-jot/pull/106#issuecomment-6183806372) |
+| A here-string piped into `aside.exe add` in Windows PowerShell 5.1 arrives with a leading BOM under the default ASCII `$OutputEncoding`, not only under UTF-8 | ⚠️ the BOM was seen with the setting believed to be the default, but the session's actual value wasn't recorded, and a PowerShell profile can change it; Microsoft's docs say ASCII has no BOM to send. To confirm: in `powershell -NoProfile`, check `$OutputEncoding.WebName` is `us-ascii`, then pipe a here-string into `aside.exe add` and look for U+FEFF. Nothing depends on it: `aside add` strips the BOM either way | owner, the Windows run on aside-jot #106 |
 | In bash and zsh, `cd … && aside add <<'EOF' && aside done …` skips `done` when the `cd` or the `add` fails, and still expands nothing in the heredoc | ✅ | probe in zsh and bash with stand-ins: a missing folder and a failing command each skipped the last command; `$(echo PWNED)` and `` `id` `` passed through literally |
 | `aside add` with empty stdin fails with "empty jot" | ✅ | `internal/app/app.go` (`CaptureOnce`: `errors.New("empty jot")`); probe: exit status 1 |
 | The MCP `show` tool returns the jot's `repo_root` | ✅ | `internal/mcp/server.go:428-440` returns the `app.Entry`; `internal/store/store.go:83` (`json:"repo_root,omitempty"`) |
