@@ -41,8 +41,9 @@ except OSError:
 settings = {
     "env": user.get("env", {}),
     # Edit is the TTL change, only inside the throwaway tree (macOS reports
-    # it as /private/tmp). The shell commands are jotaside done and read-only
-    # git in that tree, which "update jot" may use to check the change.
+    # it as /private/tmp). The shell commands are jotaside done and git diff,
+    # log and status in that tree, which "update jot" may use to check the
+    # change. No other arguments: git diff and git log take --output=<file>.
     # Anything else has to ask, and the driver treats a permission prompt as a
     # failed take.
     "permissions": {"allow": [
@@ -51,10 +52,9 @@ settings = {
         f"Edit(/private{work}/api/**)",
         f"Bash({work}/bin/jotaside done *)",
         f"Bash(/private{work}/bin/jotaside done *)",
-    ] + [f"Bash(git {where}{sub}{args})"
+    ] + [f"Bash(git {where}{cmd})"
          for where in ("", f"-C {work}/api ", f"-C /private{work}/api ")
-         for sub in ("diff", "log", "status", "show")
-         for args in ("", " *")]},
+         for cmd in ("diff", "diff -- *", "log", "status")]},
     "hooks": {"UserPromptSubmit": [{"hooks": [
         {"type": "command", "command": f"{work}/bin/jotaside hook claude"}]}]},
 }
@@ -71,12 +71,12 @@ if [ ! -x "$work/venv/bin/python" ]; then
 fi
 
 # Run from inside a Claude Code session, the demo's Claude would inherit that
-# session's markers and show "Transcript saving is off" in every frame. Keep
-# the provider and model settings (CLAUDE_CODE_USE_*, ANTHROPIC_*), drop the rest.
-unset CLAUDECODE CLAUDE_PID CLAUDE_EFFORT
-for v in $(compgen -e | grep '^CLAUDE_CODE_'); do
-  case "$v" in CLAUDE_CODE_USE_*) ;; *) unset "$v" ;; esac
-done
+# session's markers and show "Transcript saving is off" in every frame. Clear
+# those markers only; provider, model and sign-in variables stay.
+unset CLAUDECODE CLAUDE_PID CLAUDE_EFFORT CLAUDE_CODE_ENTRYPOINT CLAUDE_CODE_EXECPATH \
+  CLAUDE_CODE_SESSION_ID CLAUDE_CODE_CHILD_SESSION CLAUDE_CODE_SESSION_ATTENDED \
+  CLAUDE_CODE_HOST_SESSION_ID CLAUDE_CODE_SSE_PORT \
+  CLAUDE_CODE_MESSAGING_SOCKET CLAUDE_CODE_MESSAGING_TOKEN
 
 export JOT_DB="$work/demo.db"
 export DEMO_WORK="$work"
@@ -151,6 +151,28 @@ for i, line in enumerate(lines[1:], 1):
         lines[i] = json.dumps(ev, ensure_ascii=False)
 if not saw_model:
     sys.exit("demo: model banner was not found; not writing the gif")
+
+# The patterns above redact; this decides. Whatever layout Claude Code uses,
+# the recording as plain text must not name the provider, its resource or the
+# user. Provider settings can come from the shell or from the settings env the
+# demo copied. Cursor moves become spaces, and each name is also looked for
+# with all whitespace removed, so words placed one by one are still found.
+import os
+env = dict(json.load(open(os.path.join(os.path.dirname(path), "settings.json"))).get("env", {}))
+env.update(os.environ)
+names = {"FOUNDRY": ["Microsoft", "Foundry", "Azure"], "BEDROCK": ["Amazon", "Bedrock", "AWS"],
+         "VERTEX": ["Google", "Vertex"]}
+banned = [n for k, ns in names.items() if env.get(f"CLAUDE_CODE_USE_{k}") for n in ns]
+banned += [env[k] for k in ("ANTHROPIC_FOUNDRY_RESOURCE", "ANTHROPIC_VERTEX_PROJECT_ID", "USER")
+           if env.get(k)]
+banned.append(os.path.expanduser("~"))
+plain = "".join(json.loads(l)[2] for l in lines[1:] if json.loads(l)[1] == "o")
+plain = re.sub(r"\x1b\[\d*[GCD]", " ", plain)
+plain = re.sub(r"\x1b\[[0-9;?]*[A-Za-z]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b.", "", plain).lower()
+squashed = re.sub(r"\s+", "", plain)
+for b in banned:
+    if b.lower() in plain or re.sub(r"\s+", "", b).lower() in squashed:
+        sys.exit(f"demo: the recording contains {b!r}; not writing the gif")
 open(path, "w").write("\n".join(lines) + "\n")
 EOF
 agg --theme monokai --speed 1.6 --idle-time-limit 1.5 --last-frame-duration 5 \
