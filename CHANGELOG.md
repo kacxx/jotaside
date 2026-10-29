@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.2.0](https://github.com/kacxx/jotaside/compare/v0.1.1...v0.2.0) (2026-10-29)
+
+
+### Features
+
+* install on macOS with brew install kacxx/tap/jotaside ([#21](https://github.com/kacxx/jotaside/issues/21)) ([ff88a56](https://github.com/kacxx/jotaside/commit/ff88a56fbc6b1eebe56125b75d6e0c6449128b3e))
+
+
+### Bug Fixes
+
+* ship third-party license notices in the release archives ([#24](https://github.com/kacxx/jotaside/issues/24)) ([6b008a6](https://github.com/kacxx/jotaside/commit/6b008a6af542f674aaa4bff8aca35898bd2aef50))
+
 ## [0.1.1](https://github.com/kacxx/jotaside/compare/v0.1.0...v0.1.1) (2026-10-25)
 
 
