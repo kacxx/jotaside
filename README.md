@@ -133,12 +133,13 @@ $ jotaside version
 jotaside v0.1.0
 ```
 
-To update, run `brew upgrade jotaside`, the same `go install …@latest` again, or `mv` the new
-downloaded binary over the old one at the same path (no need to rerun setup).
-Use `mv` rather than `cp`: on Apple Silicon, copying over the old file can get
-the new one killed on start. A browser download needs the `xattr` step again.
-Hooks pick up the new binary straight away. The MCP server keeps running the old one until its
-agent restarts, so restart Claude Desktop, Codex and any open agent sessions.
+To update, run `brew upgrade jotaside`, the same `go install …@latest` again,
+or `mv` the new downloaded binary over the old one at the same path (no need to
+rerun setup). Use `mv` rather than `cp`: on Apple Silicon, copying over the old
+file can get the new one killed on start. A browser download needs the `xattr`
+step again. Hooks pick up the new binary straight away. The MCP server keeps
+running the old one until its agent restarts, so restart Claude Desktop, Codex
+and any open agent sessions.
 
 ### Coming from aside
 
