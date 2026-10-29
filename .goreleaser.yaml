@@ -30,6 +30,33 @@ checksum:
 changelog:
   disable: true
 
+# Publishes Casks/jotaside.rb to kacxx/homebrew-tap, so macOS users can
+# `brew install kacxx/tap/jotaside`. HOMEBREW_TAP_TOKEN needs write access to
+# that repo; GITHUB_TOKEN can only write to this one.
+homebrew_casks:
+  - name: jotaside
+    ids: [jotaside]
+    binaries: [jotaside]
+    homepage: https://github.com/kacxx/jotaside
+    description: Side channel for thoughts while you work with coding agents
+    license: MIT
+    repository:
+      owner: kacxx
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_TOKEN }}"
+    commit_author:
+      name: goreleaserbot
+      email: bot@goreleaser.com
+    commit_msg_template: "jotaside {{ .Tag }}"
+    # The binary isn't signed, so Gatekeeper would refuse to run it with the
+    # quarantine flag Homebrew sets on downloads.
+    hooks:
+      post:
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/jotaside"]
+          end
+
 # release-please creates the GitHub release and its notes; GoReleaser only
 # attaches the archives and checksums to it.
 release:

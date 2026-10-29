@@ -46,6 +46,7 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
 
   # Installs the new release from its archives on clean runners, as a new
   # user would. Called here for the same reason as goreleaser above.
