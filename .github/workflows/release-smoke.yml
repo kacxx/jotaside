@@ -50,3 +50,20 @@ jobs:
           REPO: ${{ github.repository }}
           TAG: ${{ inputs.tag }}
         run: bash test/release/smoke.sh
+
+  # Installs the release from the Homebrew tap. Right after a release (a push
+  # to main called this) the tap must hold the new version; other runs skip a
+  # tag the tap no longer serves.
+  brew:
+    runs-on: macos-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Install from the tap and check it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          TAG: ${{ inputs.tag }}
+          REQUIRE: ${{ github.event_name == 'push' }}
+        run: bash test/release/brew.sh
