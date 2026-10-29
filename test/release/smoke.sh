@@ -122,6 +122,11 @@ BIN="$BINDIR/$EXE"
 # Every later step runs the binary; without it they would all fail separately.
 [ -f "$BIN" ] && ok "archive holds $EXE" || { bad "no $EXE in the archive"; summary; exit 1; }
 [ -f "$BINDIR/README.md" ] && [ -f "$BINDIR/LICENSE" ] && ok "archive holds README.md and LICENSE" || bad "README.md or LICENSE missing"
+if at_least 0.2.0; then
+  [ -f "$BINDIR/THIRD_PARTY_NOTICES" ] && ok "archive holds THIRD_PARTY_NOTICES" || bad "THIRD_PARTY_NOTICES missing"
+else
+  note "THIRD_PARTY_NOTICES check skipped: added in v0.2.0"
+fi
 if ! command -v jotaside >/dev/null 2>&1; then
   ok "no jotaside on PATH, as for a new user"
 elif [ -n "$CLEAN" ]; then
