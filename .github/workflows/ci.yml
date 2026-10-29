@@ -69,6 +69,23 @@ jobs:
       - name: End-to-end install and hook flow
         run: bash test/e2e/run.sh
 
+  # The release archives ship THIRD_PARTY_NOTICES, so a dependency change that
+  # doesn't regenerate it fails here rather than shipping stale notices.
+  notices:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: THIRD_PARTY_NOTICES matches go.mod
+        run: bash scripts/third-party-notices.sh --check
+
   lint:
     runs-on: ubuntu-latest
     steps:
