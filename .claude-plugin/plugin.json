@@ -1,6 +1,6 @@
 {
   "name": "jotaside",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Read and act on your jots: check the inbox, find where you worked, and \"update jot N\" to see whether a jot was done. Needs jotaside installed and `jotaside setup claude` run (the hook that records jots); the jotaside MCP server is recommended.",
   "author": {
     "name": "kacxx",
