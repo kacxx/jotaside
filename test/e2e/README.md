@@ -19,11 +19,14 @@ points end to end:
    and repeat the message on stderr; the Cursor hook exits 0.
 6. MCP — a JSON-RPC `initialize` handshake.
 
-The binary under test is installed into a folder the script creates under
-`${XDG_CACHE_HOME:-~/.cache}/jotaside-e2e` and removed at the end, so the
-`jotaside` in `$(go env GOPATH)/bin` that your hooks and MCP server use is left
-as it is. The folder is outside the system temp folder because `jotaside setup`
-refuses to register a binary there.
+On a developer's machine the binary under test is installed into a folder the
+script creates under `${XDG_CACHE_HOME:-~/.cache}/jotaside-e2e` and removed at
+the end, so the `jotaside` in `$(go env GOPATH)/bin` that your hooks and MCP
+server use is left as it is. The folder is outside the system temp folder
+because `jotaside setup` refuses to register a binary there. If it can't be
+created, the script stops. In CI (`CI=true`) and in the clean-room container
+(`JOTASIDE_E2E_EXPECT_NOT_ON_PATH=1`) there is nothing to protect, so it
+installs into `$(go env GOPATH)/bin`, as the README tells a new user.
 
 The database is redirected to a throwaway path (`JOT_DB` under `mktemp -d`), so
 running it **never touches your real inbox**.

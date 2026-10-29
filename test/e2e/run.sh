@@ -10,13 +10,18 @@ set -u
 
 TMP="$(mktemp -d)"
 export JOT_DB="$TMP/e2e.db"
-# The binary under test goes in a folder of its own, so the jotaside your hooks
-# use (in GOPATH/bin) is never replaced. It can't be under $TMPDIR, because
-# `jotaside setup` refuses to register a binary in a temp folder.
-BIN_PARENT="${XDG_CACHE_HOME:-$HOME/.cache}/jotaside-e2e"
-mkdir -p "$BIN_PARENT"
-BIN_DIR="$(mktemp -d "$BIN_PARENT/bin.XXXXXX")"
-trap 'rm -rf "$TMP" "$BIN_DIR"; rmdir "$BIN_PARENT" 2>/dev/null' EXIT
+# On a developer's machine the binary under test goes in a folder of its own, so
+# the jotaside your hooks use (in GOPATH/bin) is never replaced. It can't be
+# under $TMPDIR, because `jotaside setup` refuses to register a binary in a temp
+# folder. In CI and the clean-room container there is nothing to protect, so
+# they install into GOPATH/bin, which is where the README says it lands.
+BIN_DIR=""
+if [ "${CI:-}" != "true" ] && [ "${JOTASIDE_E2E_EXPECT_NOT_ON_PATH:-0}" != "1" ]; then
+  BIN_PARENT="${XDG_CACHE_HOME:-${HOME:?HOME is not set}/.cache}/jotaside-e2e"
+  mkdir -p "$BIN_PARENT" && BIN_DIR="$(mktemp -d "$BIN_PARENT/bin.XXXXXX")" \
+    || { echo "can't create a folder for the binary under $BIN_PARENT"; exit 1; }
+fi
+trap 'rm -rf "$TMP"; [ -n "$BIN_DIR" ] && rm -rf "$BIN_DIR" && rmdir "$BIN_PARENT" 2>/dev/null' EXIT
 
 PASS=0; FAIL=0; OBSERVE=0
 ok()   { echo "  PASS: $1"; PASS=$((PASS+1)); }
@@ -33,12 +38,12 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." 2>/dev/null && pwd || true)"
 hr "1. install (no cgo; pure-Go sqlite)"
 if [ -n "$REPO_ROOT" ] && grep -q '^module github.com/kacxx/jotaside$' "$REPO_ROOT/go.mod" 2>/dev/null; then
   echo "  installing from checkout: $REPO_ROOT"
-  ( cd "$REPO_ROOT" && GOBIN="$BIN_DIR" go install ./cmd/jotaside ) && ok "go install ./cmd/jotaside" || bad "go install from checkout"
+  ( cd "$REPO_ROOT" && GOBIN="${BIN_DIR:-$(go env GOPATH)/bin}" go install ./cmd/jotaside ) && ok "go install ./cmd/jotaside" || bad "go install from checkout"
 else
   echo "  installing published @latest"
-  GOBIN="$BIN_DIR" go install github.com/kacxx/jotaside/cmd/jotaside@latest && ok "go install @latest" || bad "go install @latest"
+  GOBIN="${BIN_DIR:-$(go env GOPATH)/bin}" go install github.com/kacxx/jotaside/cmd/jotaside@latest && ok "go install @latest" || bad "go install @latest"
 fi
-BIN="$BIN_DIR/jotaside"
+BIN="${BIN_DIR:-$(go env GOPATH)/bin}/jotaside"
 [ -x "$BIN" ] && ok "binary present at $BIN" || bad "binary missing at $BIN"
 
 hr "2. paths / PATH check"
