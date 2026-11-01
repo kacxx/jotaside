@@ -350,27 +350,37 @@ through the model, which is what a `>> ` jot exists to avoid.
 
 ## activity returns evidence, not a verdict
 
-**Decided:** `aside activity <id>` and the read-only MCP tool `activity` return
+**Decided:** `jotaside activity <id>` and the read-only MCP tool `activity` return
 what a jot's own session did after the jot: prompts, agent text and collapsed
 tool calls, oldest first, within a size cap (2026-10-14, #78, #82, #84). They
 say nothing about whether the jot was done. An agent reads the records and
-judges, and the user approves any `aside done` it proposes.
+judges, and the user approves any `jotaside done` it proposes.
 
 **Why:** "was this actioned?" is a judgement on free text (a jot reading "get
 code reviews" and a session that says "I've added review comments" share no
-words), which needs a model, and aside has none. Giving the agent the evidence
-keeps aside a plain store. The text is the transcript of a past session, which
+words), which needs a model, and jotaside has none. Giving the agent the evidence
+keeps jotaside a plain store. The text is the transcript of a past session, which
 can hold tool output and messages from other sources, so the tool says it is
 data, not instructions.
 
-**Cost:** the cap keeps the oldest records after the jot, so a long session
-shows its start, not its end. Only Claude Code and Claude Desktop jots can be
-read; Codex jots store their transcript path but the rollout format is not
+**Over the cap, the first and the last records** (revised 2026-11-01,
+kacxx/jotaside#4). A session longer than the cap returns its first records
+and its last, the cap split evenly between them (the end takes whatever the
+start didn't use), with the left-out count where they were left out. A
+transcript over the 32 MB read limit has its last 8 MB read as well, so the
+end is seen and memory stays bounded. Why revised: the cap used to keep
+only the oldest records, but in a long session the evidence that a jot was
+dealt with is often near the end, so a real "done" looked like "no sign". The
+skill now judges from both ends.
+
+**Cost:** the middle of a long session is still left out, and the middle of a
+transcript over 32 MB is not read. Only Claude Code and Claude Desktop jots can
+be read; Codex jots store their transcript path but the rollout format is not
 read yet.
 
-**Revisit if:** the oldest-first cap hides the evidence in real use (add a tail
-option), or the evidence proves clear enough that closing the obvious cases
-without asking is worth the risk (see
+**Revisit if:** the evidence is often in the left-out middle, or the evidence
+proves clear enough that closing the obvious cases without asking is worth the
+risk (see
 [Read-only covers the MCP server, not the agent](#read-only-covers-the-mcp-server-not-the-agent)).
 
 ## Public repos need `--public` under `--yes`

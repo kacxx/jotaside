@@ -373,9 +373,10 @@ var tools = []map[string]any{
 		"name": "activity",
 		"description": "Show what the session a jot was captured in did after the jot, for questions like " +
 			"\"has jot 31 been done?\". It returns evidence only and makes no judgement: the user's prompts, the agent's text and " +
-			"the tool calls between them (collapsed to one \"tools\" record each time), oldest first, within a size cap. omitted is how " +
-			"many further records the cap left out, and read_limited means the transcript was too large to read to the end, so " +
-			"there may be more. Only Claude Code and Claude Desktop jots have a readable transcript; for any other jot, or a " +
+			"the tool calls between them (collapsed to one \"tools\" record each time), oldest first, within a size cap. Over the cap " +
+			"it returns the first and the last records: omitted is how many records were left out between them, and omitted_after " +
+			"is how many of records come before that gap. read_limited means the transcript was too large to read whole: its start " +
+			"and its end were read and the middle, at the gap, was not, so there may be more. Judge from both the start and the end. Only Claude Code and Claude Desktop jots have a readable transcript; for any other jot, or a " +
 			"transcript that is gone, unavailable says why. The result also has the jot's own jot_text, jot_status and done_note. " + quoteNote + transcriptNote + " " + doneNote,
 		"inputSchema": map[string]any{
 			"type":       "object",

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -799,5 +800,56 @@ func TestInboxSessionTitle(t *testing.T) {
 	}
 	if _, ok := byText["without"]["session_title"]; ok {
 		t.Errorf("session_title present without a title: %v", byText["without"])
+	}
+}
+
+func TestActivityToolOverTheCap(t *testing.T) {
+	ctx := context.Background()
+	svc, err := app.Open(filepath.Join(t.TempDir(), "jot.db"), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	later := time.Now().Add(time.Hour).UTC()
+	var lines []string
+	for i := range 20 {
+		b, _ := json.Marshal(map[string]any{"type": "assistant", "timestamp": later.Add(time.Duration(i) * time.Second).Format(time.RFC3339),
+			"message": map[string]any{"role": "assistant", "content": []any{map[string]any{"type": "text", "text": fmt.Sprintf("r%d %s", i, strings.Repeat("x", 1490))}}}})
+		lines = append(lines, string(b))
+	}
+	transcript := filepath.Join(t.TempDir(), "t.jsonl")
+	if err := os.WriteFile(transcript, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Capture(ctx, app.CaptureRequest{Text: "long session", Source: "claude", SessionID: "s1",
+		Metadata: map[string]any{"transcript_path": transcript}}); err != nil {
+		t.Fatal(err)
+	}
+	in := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"activity","arguments":{"id":1}}}`
+	var out bytes.Buffer
+	if err := NewServer(svc, "test").Serve(ctx, strings.NewReader(in), &out); err != nil {
+		t.Fatal(err)
+	}
+	var r struct {
+		Result struct {
+			StructuredContent struct {
+				Records []struct {
+					Text string `json:"text"`
+				} `json:"records"`
+				Omitted      int  `json:"omitted"`
+				OmittedAfter *int `json:"omitted_after"`
+			} `json:"structuredContent"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &r); err != nil {
+		t.Fatalf("%v: %s", err, out.String())
+	}
+	sc := r.Result.StructuredContent
+	var got []string
+	for _, rec := range sc.Records {
+		got = append(got, strings.SplitN(rec.Text, " ", 2)[0])
+	}
+	if strings.Join(got, ",") != "r0,r1,r2,r3,r16,r17,r18,r19" || sc.Omitted != 12 || sc.OmittedAfter == nil || *sc.OmittedAfter != 4 {
+		t.Fatalf("records %v, omitted %d after %v", got, sc.Omitted, sc.OmittedAfter)
 	}
 }

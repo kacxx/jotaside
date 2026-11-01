@@ -53,7 +53,7 @@ func TestActivityAfterTheJot(t *testing.T) {
 		userLine("2026-10-12T02:18:00Z", "I've added review comments to those PRs"),
 	)
 	a := activityFor(e)
-	if a.Unavailable != "" || a.Omitted != 0 || a.ReadLimited {
+	if a.Unavailable != "" || a.Omitted != 0 || a.OmittedAfter != nil || a.ReadLimited {
 		t.Fatalf("activity: %+v", a)
 	}
 	var got []string
@@ -105,11 +105,57 @@ func TestActivityNothingAfterTheJot(t *testing.T) {
 	}
 }
 
-func TestActivityCapsTextAndCountsWhatItLeftOut(t *testing.T) {
-	long := strings.Repeat("x", 5000)
-	lines := []string{}
-	for i := range 10 {
-		lines = append(lines, assistantLine(fmt.Sprintf("2026-10-12T02:%02d:00Z", 20+i), long))
+// at returns the RFC 3339 time i seconds after the jot (before it, for i < 0).
+func at(i int) string {
+	return activityJotAt.Add(time.Duration(i) * time.Second).Format(time.RFC3339)
+}
+
+// texts returns the records' text, cut to the part before any padding.
+func texts(a Activity) []string {
+	var got []string
+	for _, r := range a.Records {
+		got = append(got, strings.TrimRight(strings.SplitN(r.Text, " ", 2)[0], "…"))
+	}
+	return got
+}
+
+func noDuplicates(t *testing.T, a Activity) {
+	t.Helper()
+	seen := map[string]bool{}
+	for i, r := range a.Records {
+		if seen[r.Text] {
+			t.Fatalf("record %q appears twice", r.Text)
+		}
+		seen[r.Text] = true
+		if i > 0 && r.At.Before(a.Records[i-1].At) {
+			t.Fatalf("records out of order at %d: %v", i, texts(a))
+		}
+		if !r.At.After(activityJotAt) {
+			t.Fatalf("record %q is from before the jot", r.Text)
+		}
+	}
+}
+
+func TestActivityWithinTheCapIsWhole(t *testing.T) {
+	// Seven records of 1,500 characters: more than the head's half of the cap,
+	// but within the cap, so all are returned, oldest first.
+	var lines []string
+	for i := range 7 {
+		lines = append(lines, assistantLine(at(1+i), fmt.Sprintf("r%d %s", i, strings.Repeat("x", 1490))))
+	}
+	a := activityFor(writeTranscript(t, lines...))
+	if got := strings.Join(texts(a), ","); got != "r0,r1,r2,r3,r4,r5,r6" {
+		t.Fatalf("records = %s", got)
+	}
+	if a.Omitted != 0 || a.OmittedAfter != nil || a.ReadLimited {
+		t.Fatalf("nothing is left out: %+v", a)
+	}
+}
+
+func TestActivityOverTheCapKeepsTheFirstAndTheLast(t *testing.T) {
+	var lines []string
+	for i := range 20 {
+		lines = append(lines, assistantLine(at(1+i), fmt.Sprintf("r%d %s", i, strings.Repeat("x", 5000))))
 	}
 	a := activityFor(writeTranscript(t, lines...))
 	total := 0
@@ -120,30 +166,231 @@ func TestActivityCapsTextAndCountsWhatItLeftOut(t *testing.T) {
 			total += n
 		}
 	}
-	if total > maxActivityRunes || len(a.Records) < 2 || a.Omitted != 10-len(a.Records) {
-		t.Fatalf("kept %d records (%d runes), omitted %d", len(a.Records), total, a.Omitted)
+	if total > maxActivityRunes {
+		t.Fatalf("kept %d runes, over the cap", total)
 	}
 	if !strings.HasSuffix(a.Records[0].Text, "…") {
 		t.Fatalf("an over-long record is cut with an ellipsis: %q", a.Records[0].Text[len(a.Records[0].Text)-5:])
 	}
+	// Each record is cut to 1,500: four fit in each half of the cap.
+	if got := strings.Join(texts(a), ","); got != "r0,r1,r2,r3,r16,r17,r18,r19" {
+		t.Fatalf("records = %s", got)
+	}
+	if a.Omitted != 12 || a.OmittedAfter == nil || *a.OmittedAfter != 4 || a.ReadLimited {
+		t.Fatalf("omitted %d after %v, read limited %v", a.Omitted, a.OmittedAfter, a.ReadLimited)
+	}
+	noDuplicates(t, a)
 }
 
-func TestActivityReadIsBounded(t *testing.T) {
-	defer func(read int64, line int) { maxActivityReadBytes, maxActivityLineBytes = read, line }(maxActivityReadBytes, maxActivityLineBytes)
-	maxActivityReadBytes, maxActivityLineBytes = 3000, 1000
+// shrinkReads makes the read limits small enough to test with short files.
+func shrinkReads(t *testing.T, head, tail int64, line int) {
+	t.Helper()
+	read, tl, ln := maxActivityReadBytes, maxActivityTailBytes, maxActivityLineBytes
+	t.Cleanup(func() { maxActivityReadBytes, maxActivityTailBytes, maxActivityLineBytes = read, tl, ln })
+	maxActivityReadBytes, maxActivityTailBytes, maxActivityLineBytes = head, tail, line
+}
 
-	big := assistantLine("2026-10-12T02:20:00Z", strings.Repeat("y", 1400)) // longer than a line may be
-	lines := []string{big}
-	for i := range 40 {
-		lines = append(lines, assistantLine(fmt.Sprintf("2026-10-12T02:%02d:00Z", 21+i%30), fmt.Sprintf("reply %d", i)))
+// numbered returns n assistant replies "reply <first+i>", one second apart
+// from the jot time plus first+1.
+func numbered(first, n int) []string {
+	var lines []string
+	for i := first; i < first+n; i++ {
+		lines = append(lines, assistantLine(at(1+i), fmt.Sprintf("reply %d", i)))
+	}
+	return lines
+}
+
+func TestActivityOverTheReadLimitReadsTheEnd(t *testing.T) {
+	shrinkReads(t, 3000, 3000, 1000)
+	big := assistantLine(at(0), strings.Repeat("y", 1400)) // longer than a line may be
+	lines := append([]string{big}, numbered(0, 200)...)    // about 20 KB
+	a := activityFor(writeTranscript(t, lines...))
+	got := texts(a)
+	if !a.ReadLimited || a.OmittedAfter == nil {
+		t.Fatalf("the middle was not read, so the result should say so: %+v", a)
+	}
+	first, last := a.Records[0].Text, a.Records[len(a.Records)-1].Text
+	if first != "reply 0" || last != "reply 199" {
+		t.Fatalf("first %q, last %q; the oversized line is skipped and the file's last record is read", first, last)
+	}
+	k := *a.OmittedAfter
+	if k == 0 || k >= len(a.Records) || a.Records[k].Text == fmt.Sprintf("reply %d", k) {
+		t.Fatalf("the gap after %d records should fall between the start and the end: %v", k, got)
+	}
+	if len(a.Records) >= 100 {
+		t.Fatalf("only the start and the end are read, got %d records", len(a.Records))
+	}
+	noDuplicates(t, a)
+}
+
+func TestActivityRecordsBeforeTheSkipAreLeftOut(t *testing.T) {
+	// The head fills within the start read and a few records wait in the
+	// tail when reading jumps. Those are left out, so the tail holds only
+	// records from the end of the file and there is one gap, not two.
+	shrinkReads(t, 12000, 2000, 4000)
+	var lines []string
+	for i := range 30 {
+		lines = append(lines, assistantLine(at(1+i), fmt.Sprintf("r%d %s", i, strings.Repeat("x", 1400))))
 	}
 	a := activityFor(writeTranscript(t, lines...))
-	if !a.ReadLimited {
-		t.Fatalf("reading should have stopped at the size limit: %+v", a)
+	if got := strings.Join(texts(a), ","); got != "r0,r1,r2,r3,r29" {
+		t.Fatalf("records = %s", got)
 	}
-	if len(a.Records) == 0 || len(a.Records) >= 40 || a.Records[0].Text != "reply 0" {
-		t.Fatalf("the oversized line is skipped and reading stops early: %d records, first %q", len(a.Records), a.Records[0].Text)
+	if !a.ReadLimited || a.OmittedAfter == nil || *a.OmittedAfter != 4 || a.Omitted < 4 {
+		t.Fatalf("omitted %d after %v, read limited %v", a.Omitted, a.OmittedAfter, a.ReadLimited)
 	}
+}
+
+func TestActivityTailReadStartsAtALine(t *testing.T) {
+	// The tail starts exactly at the start of a line: that line is read, not
+	// dropped as a partial one.
+	lines := numbered(0, 100)
+	last := strings.Join(lines[90:], "\n") + "\n"
+	shrinkReads(t, 1000, int64(len(last)), 1000)
+	a := activityFor(writeTranscript(t, lines...))
+	if a.OmittedAfter == nil {
+		t.Fatalf("reading should have skipped the middle: %+v", a)
+	}
+	k := *a.OmittedAfter
+	if a.Records[k].Text != "reply 90" || a.Records[len(a.Records)-1].Text != "reply 99" {
+		t.Fatalf("tail records: %v", texts(a)[k:])
+	}
+	noDuplicates(t, a)
+}
+
+func TestActivityJustOverTheReadLimitReadsNothingTwice(t *testing.T) {
+	// 40 replies of about 115 bytes: over the 3,000-byte start, but the last
+	// 3,000 bytes begin before the start ends, so reading just carries on.
+	shrinkReads(t, 3000, 3000, 1000)
+	a := activityFor(writeTranscript(t, numbered(0, 40)...))
+	if a.ReadLimited || a.Omitted != 0 || a.OmittedAfter != nil || len(a.Records) != 40 {
+		t.Fatalf("the whole file is read once: %d records, %+v", len(a.Records), a)
+	}
+	noDuplicates(t, a)
+}
+
+func TestActivityJotPastTheStartRead(t *testing.T) {
+	shrinkReads(t, 3000, 3000, 1000)
+	before := func(n int) []string {
+		var lines []string
+		for i := n; i > 0; i-- {
+			lines = append(lines, userLine(at(-i), fmt.Sprintf("before %d", i)))
+		}
+		return lines
+	}
+
+	t.Run("in the end read", func(t *testing.T) {
+		// The jot is in the last part read, so nothing after it was skipped.
+		lines := append(before(200), numbered(0, 10)...)
+		a := activityFor(writeTranscript(t, lines...))
+		if len(a.Records) != 10 {
+			t.Fatalf("records = %v", texts(a))
+		}
+		for i, r := range a.Records {
+			if r.Text != fmt.Sprintf("reply %d", i) {
+				t.Fatalf("record %d = %q", i, r.Text)
+			}
+		}
+		if a.ReadLimited || a.Omitted != 0 || a.OmittedAfter != nil {
+			t.Fatalf("nothing after the jot was skipped: %+v", a)
+		}
+		noDuplicates(t, a)
+	})
+
+	t.Run("in the skipped middle", func(t *testing.T) {
+		// The jot falls in the part that is not read: only the last records
+		// are returned, with the gap before them, and none from before the jot.
+		lines := append(before(100), numbered(0, 100)...)
+		a := activityFor(writeTranscript(t, lines...))
+		if !a.ReadLimited || a.OmittedAfter == nil || *a.OmittedAfter != 0 {
+			t.Fatalf("the start of the activity is unread and should be marked: %+v", a)
+		}
+		if len(a.Records) == 0 || a.Records[len(a.Records)-1].Text != "reply 99" {
+			t.Fatalf("records = %v", texts(a))
+		}
+		noDuplicates(t, a)
+	})
+}
+
+func TestActivitySkipIntoAnUnfinishedLine(t *testing.T) {
+	// The end read starts inside a last line that never ends (a huge tool
+	// result, or a session being written). Dropping the partial line reaches
+	// the end of the file, and the skip must still be marked.
+	shrinkReads(t, 3000, 3000, 1000)
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	body := strings.Join(numbered(0, 60), "\n") + "\n" + `{"type":"user","timestamp":"` + at(100) + `","message":{"content":"` + strings.Repeat("z", 5000)
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	meta, _ := json.Marshal(map[string]string{"transcript_path": path})
+	a := activityFor(Entry{ID: 31, Source: "claude", SessionID: "s1", CreatedAt: activityJotAt, Metadata: meta})
+	if !a.ReadLimited || a.OmittedAfter == nil || *a.OmittedAfter != len(a.Records) || len(a.Records) == 0 {
+		t.Fatalf("the unread end must be marked after the records read: %d records, %+v", len(a.Records), a)
+	}
+}
+
+func TestActivityJotPlacementSurvivesOutOfOrderTimes(t *testing.T) {
+	before := func(n int) []string {
+		var lines []string
+		for i := n; i > 0; i-- {
+			lines = append(lines, userLine(at(-i), fmt.Sprintf("before %d", i)))
+		}
+		return lines
+	}
+
+	// endReadFrom sets the end read to start exactly at lines[i].
+	endReadFrom := func(lines []string, i int) {
+		shrinkReads(t, 3000, int64(len(strings.Join(lines[i:], "\n"))+1), 1000)
+	}
+
+	t.Run("one early line after the skip", func(t *testing.T) {
+		// The jot is in the skipped middle, but the first line of the end
+		// read carries an earlier time (written late). One line must not
+		// place the jot in the end read.
+		lines := append(before(60), numbered(0, 100)...)
+		i := len(lines) - 20
+		lines = append(lines[:i], append([]string{userLine(at(-500), "written late")}, lines[i:]...)...)
+		endReadFrom(lines, i)
+		a := activityFor(writeTranscript(t, lines...))
+		if !a.ReadLimited || a.OmittedAfter == nil || *a.OmittedAfter != 0 || a.Records[0].Text != "reply 80" || a.Records[len(a.Records)-1].Text != "reply 99" {
+			t.Fatalf("the start of the activity is unread and should be marked: %v %+v", texts(a), a)
+		}
+		noDuplicates(t, a)
+	})
+
+	t.Run("carried-over history after the skip", func(t *testing.T) {
+		// The start read sees the jot pass (a subagent line after it) but
+		// keeps no record. The end read starts with a block of old history
+		// carried over from an earlier session, so its first lines are all
+		// from before the jot. The skipped middle is still after the jot.
+		lines := before(10)
+		for j := range 40 {
+			lines = append(lines, `{"type":"assistant","isSidechain":true,"timestamp":"`+at(1+j)+`","message":{"content":[{"type":"text","text":"subagent"}]}}`)
+		}
+		i := len(lines)
+		lines = append(lines, before(12)...)
+		lines = append(lines, numbered(101, 10)...)
+		endReadFrom(lines, i)
+		a := activityFor(writeTranscript(t, lines...))
+		if !a.ReadLimited || a.OmittedAfter == nil || *a.OmittedAfter != 0 || a.Records[0].Text != "reply 101" || a.Records[len(a.Records)-1].Text != "reply 110" {
+			t.Fatalf("the skipped middle must be marked: %v %+v", texts(a), a)
+		}
+		noDuplicates(t, a)
+	})
+}
+
+func TestActivityTailIsBounded(t *testing.T) {
+	// A long session read whole: the kept records stay within the cap however
+	// many there are.
+	a := activityFor(writeTranscript(t, numbered(0, 20000)...))
+	total := 0
+	for _, r := range a.Records {
+		total += len([]rune(r.Text))
+	}
+	if total > maxActivityRunes || a.Omitted+len(a.Records) != 20000 || a.Records[len(a.Records)-1].Text != "reply 19999" {
+		t.Fatalf("%d records (%d runes), %d omitted", len(a.Records), total, a.Omitted)
+	}
+	noDuplicates(t, a)
 }
 
 func TestActivityUnavailable(t *testing.T) {
