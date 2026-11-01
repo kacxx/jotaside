@@ -368,7 +368,7 @@ kacxx/jotaside#4). A session longer than the cap returns its first records
 and its last, the cap split evenly between them (the end takes whatever the
 start didn't use), with the left-out count where they were left out. A
 transcript over the 32 MB read limit has its last 8 MB read as well, so the
-end is always seen and memory stays bounded. Why revised: the cap used to keep
+end is seen and memory stays bounded. Why revised: the cap used to keep
 only the oldest records, but in a long session the evidence that a jot was
 dealt with is often near the end, so a real "done" looked like "no sign". The
 skill now judges from both ends.

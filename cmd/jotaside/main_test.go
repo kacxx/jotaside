@@ -979,6 +979,7 @@ func TestPrintActivityShowsTheGapWhereItIs(t *testing.T) {
 		want string // the record texts and the gap line, in order
 	}{
 		{"whole", app.Activity{Records: []app.ActivityRecord{rec("first"), rec("last")}}, "first|last"},
+		{"nothing after the jot", app.Activity{}, "No activity recorded after the jot."},
 		{"over the cap", app.Activity{Records: []app.ActivityRecord{rec("first"), rec("last")}, Omitted: 7, OmittedAfter: pos(1)},
 			"first|(7 records left out here)|last"},
 		{"one left out", app.Activity{Records: []app.ActivityRecord{rec("first"), rec("last")}, Omitted: 1, OmittedAfter: pos(1)},
@@ -987,6 +988,8 @@ func TestPrintActivityShowsTheGapWhereItIs(t *testing.T) {
 			"first|(3 records left out here; the transcript is large, so part of it here was not read and there may be more)|last"},
 		{"start unread", app.Activity{Records: []app.ActivityRecord{rec("last")}, OmittedAfter: pos(0), ReadLimited: true},
 			"(the transcript is large, so part of it here was not read and there may be more records)|last"},
+		{"nothing read after the jot", app.Activity{OmittedAfter: pos(0), ReadLimited: true},
+			"(the transcript is large, so part of it here was not read and there may be more records)"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var out bytes.Buffer
@@ -994,7 +997,7 @@ func TestPrintActivityShowsTheGapWhereItIs(t *testing.T) {
 			var got []string
 			for _, line := range strings.Split(out.String(), "\n") {
 				switch {
-				case strings.HasPrefix(line, "("):
+				case strings.HasPrefix(line, "("), strings.HasPrefix(line, "No activity"):
 					got = append(got, line)
 				case strings.Contains(line, "] agent: "):
 					got = append(got, line[strings.Index(line, "] agent: ")+len("] agent: "):])

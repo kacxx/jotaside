@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"github.com/kacxx/jotaside/internal/capture"
 )
@@ -36,6 +37,11 @@ var (
 	// longer one (a huge tool result) is skipped without being held in memory.
 	maxActivityLineBytes = 4 << 20
 )
+
+// jotPlacementLines is how many lines from before the jot must start the
+// part read after a skip for the jot to count as in that part. One is not
+// enough: a line can carry an earlier time than the lines around it.
+const jotPlacementLines = 10
 
 // ActivityRecord is one thing that happened in a session after a jot.
 type ActivityRecord struct {
@@ -160,13 +166,13 @@ func readActivity(path string, t time.Time, a *Activity) error {
 			return err
 		}
 		r.Reset(f)
+		c.skipMiddle()
 		if _, _, err := readBoundedLine(r, 0); err != nil {
 			if !errors.Is(err, io.EOF) {
 				return err
 			}
 			break
 		}
-		c.skipMiddle()
 	}
 	c.finish(a)
 	return nil
@@ -203,14 +209,21 @@ type activityCollector struct {
 	headRunes int
 	headDone  bool // head is closed; later records go to the tail
 	tail      []ActivityRecord
+	tailN     []int // rune count of each tail record
 	tailRunes int
 	omitted   int
 
-	// middlePending is set when the middle of the file was skipped before any
-	// record after the jot was seen. The first timestamp read after the skip
-	// tells whether the jot is in the part read (nothing was missed) or in
-	// the skipped middle (the start of the activity is unread).
+	// latest is the latest timestamp seen on any line. Timestamps can go
+	// backwards (lines written late, history carried over from an earlier
+	// session), so no single line says where the reading is; the latest does.
+	latest time.Time
+
+	// middlePending is set when the middle of the file was skipped before
+	// anything after the jot was seen. The first timestamps read after the
+	// skip tell whether the jot is in the part read (nothing was missed) or
+	// in the skipped middle (the start of the activity is unread).
 	middlePending bool
+	pendingLines  int  // timestamped lines read since the skip
 	middleUnread  bool // part of the activity after the jot was not read
 
 	toolCalls map[string]int // pending tool group: calls by tool name
@@ -236,12 +249,17 @@ func (c *activityCollector) add(line []byte) {
 	if err != nil {
 		return
 	}
+	if ts.After(c.latest) {
+		c.latest = ts
+	}
 	if c.middlePending {
-		c.middlePending = false
 		if ts.After(c.after) {
-			// The jot is in the skipped middle, so the first records after
-			// it are unread: what follows can only be the last records.
-			c.middleUnread, c.headDone = true, true
+			// A line after the jot came before jotPlacementLines lines from
+			// before it, so the jot may be in the skipped middle.
+			c.startUnread()
+		} else if c.pendingLines++; c.pendingLines >= jotPlacementLines {
+			// Enough lines from before the jot: it is in the part read.
+			c.middlePending = false
 		}
 	}
 	if rec.IsSidechain || rec.IsMeta || rec.IsCompactSummary || !ts.After(c.after) {
@@ -276,7 +294,7 @@ func (c *activityCollector) add(line []byte) {
 // runs unbroken to it.
 func (c *activityCollector) skipMiddle() {
 	c.flushTools()
-	if len(c.head) == 0 {
+	if len(c.head) == 0 && !c.latest.After(c.after) {
 		// Nothing after the jot yet: the jot may be in the part still to be
 		// read, in which case nothing after it was skipped.
 		c.middlePending = true
@@ -284,16 +302,24 @@ func (c *activityCollector) skipMiddle() {
 	}
 	c.middleUnread, c.headDone = true, true
 	c.omitted += len(c.tail)
-	c.tail, c.tailRunes = nil, 0
+	c.tail, c.tailN, c.tailRunes = nil, nil, 0
+}
+
+// startUnread settles a pending skip the cautious way: the jot is taken to
+// be in the skipped middle, so the start of its activity is unread and what
+// follows can only be the last records. Nothing has been kept yet: a pending
+// skip is settled by the first line after the jot, before its record.
+func (c *activityCollector) startUnread() {
+	c.middlePending, c.middleUnread, c.headDone = false, true, true
 }
 
 // finish flushes pending tool calls and fills a's records and counts.
 func (c *activityCollector) finish(a *Activity) {
 	c.flushTools()
 	if c.middlePending {
-		// Nothing was read after the skip, so it is unknown whether the
-		// skipped middle held records after the jot.
-		c.middleUnread = true
+		// Too little was read after the skip to place the jot, so the
+		// skipped middle may have held records after it.
+		c.startUnread()
 	}
 	a.Records = append(append([]ActivityRecord(nil), c.head...), c.tail...)
 	a.Omitted, a.ReadLimited = c.omitted, c.middleUnread
@@ -352,10 +378,11 @@ func (c *activityCollector) push(rec ActivityRecord) {
 		// Nothing printable was left, e.g. a prompt of only escapes.
 		return
 	}
-	if rs := []rune(rec.Text); len(rs) > maxActivityRecordRunes {
-		rec.Text = string(rs[:maxActivityRecordRunes-1]) + "…"
+	n := utf8.RuneCountInString(rec.Text)
+	if n > maxActivityRecordRunes {
+		rec.Text = string([]rune(rec.Text)[:maxActivityRecordRunes-1]) + "…"
+		n = maxActivityRecordRunes
 	}
-	n := len([]rune(rec.Text))
 	if !c.headDone {
 		if c.headRunes+n <= maxActivityRunes/2 || len(c.head) == 0 {
 			c.headRunes += n
@@ -364,13 +391,18 @@ func (c *activityCollector) push(rec ActivityRecord) {
 		}
 		c.headDone = true
 	}
-	// The tail has whatever part of the cap the head didn't use, so a session
-	// within the cap is kept whole. It always keeps its newest record.
-	c.tail = append(c.tail, rec)
+	c.pushTail(rec, n)
+}
+
+// pushTail adds rec, of n runes, to the tail. The tail has whatever part of
+// the cap the head didn't use, so a session within the cap is kept whole. It
+// always keeps its newest record.
+func (c *activityCollector) pushTail(rec ActivityRecord, n int) {
+	c.tail, c.tailN = append(c.tail, rec), append(c.tailN, n)
 	c.tailRunes += n
 	for c.headRunes+c.tailRunes > maxActivityRunes && len(c.tail) > 1 {
-		c.tailRunes -= len([]rune(c.tail[0].Text))
-		c.tail = c.tail[1:]
+		c.tailRunes -= c.tailN[0]
+		c.tail, c.tailN = c.tail[1:], c.tailN[1:]
 		c.omitted++
 	}
 }

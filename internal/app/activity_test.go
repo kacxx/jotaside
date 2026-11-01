@@ -248,6 +248,9 @@ func TestActivityTailReadStartsAtALine(t *testing.T) {
 	last := strings.Join(lines[90:], "\n") + "\n"
 	shrinkReads(t, 1000, int64(len(last)), 1000)
 	a := activityFor(writeTranscript(t, lines...))
+	if a.OmittedAfter == nil {
+		t.Fatalf("reading should have skipped the middle: %+v", a)
+	}
 	k := *a.OmittedAfter
 	if a.Records[k].Text != "reply 90" || a.Records[len(a.Records)-1].Text != "reply 99" {
 		t.Fatalf("tail records: %v", texts(a)[k:])
@@ -304,6 +307,73 @@ func TestActivityJotPastTheStartRead(t *testing.T) {
 		}
 		if len(a.Records) == 0 || a.Records[len(a.Records)-1].Text != "reply 99" {
 			t.Fatalf("records = %v", texts(a))
+		}
+		noDuplicates(t, a)
+	})
+}
+
+func TestActivitySkipIntoAnUnfinishedLine(t *testing.T) {
+	// The end read starts inside a last line that never ends (a huge tool
+	// result, or a session being written). Dropping the partial line reaches
+	// the end of the file, and the skip must still be marked.
+	shrinkReads(t, 3000, 3000, 1000)
+	path := filepath.Join(t.TempDir(), "session.jsonl")
+	body := strings.Join(numbered(0, 60), "\n") + "\n" + `{"type":"user","timestamp":"` + at(100) + `","message":{"content":"` + strings.Repeat("z", 5000)
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	meta, _ := json.Marshal(map[string]string{"transcript_path": path})
+	a := activityFor(Entry{ID: 31, Source: "claude", SessionID: "s1", CreatedAt: activityJotAt, Metadata: meta})
+	if !a.ReadLimited || a.OmittedAfter == nil || *a.OmittedAfter != len(a.Records) || len(a.Records) == 0 {
+		t.Fatalf("the unread end must be marked after the records read: %d records, %+v", len(a.Records), a)
+	}
+}
+
+func TestActivityJotPlacementSurvivesOutOfOrderTimes(t *testing.T) {
+	before := func(n int) []string {
+		var lines []string
+		for i := n; i > 0; i-- {
+			lines = append(lines, userLine(at(-i), fmt.Sprintf("before %d", i)))
+		}
+		return lines
+	}
+
+	// endReadFrom sets the end read to start exactly at lines[i].
+	endReadFrom := func(lines []string, i int) {
+		shrinkReads(t, 3000, int64(len(strings.Join(lines[i:], "\n"))+1), 1000)
+	}
+
+	t.Run("one early line after the skip", func(t *testing.T) {
+		// The jot is in the skipped middle, but the first line of the end
+		// read carries an earlier time (written late). One line must not
+		// place the jot in the end read.
+		lines := append(before(60), numbered(0, 100)...)
+		i := len(lines) - 20
+		lines = append(lines[:i], append([]string{userLine(at(-500), "written late")}, lines[i:]...)...)
+		endReadFrom(lines, i)
+		a := activityFor(writeTranscript(t, lines...))
+		if !a.ReadLimited || a.OmittedAfter == nil || *a.OmittedAfter != 0 || a.Records[0].Text != "reply 80" || a.Records[len(a.Records)-1].Text != "reply 99" {
+			t.Fatalf("the start of the activity is unread and should be marked: %v %+v", texts(a), a)
+		}
+		noDuplicates(t, a)
+	})
+
+	t.Run("carried-over history after the skip", func(t *testing.T) {
+		// The start read sees the jot pass (a subagent line after it) but
+		// keeps no record. The end read starts with a block of old history
+		// carried over from an earlier session, so its first lines are all
+		// from before the jot. The skipped middle is still after the jot.
+		lines := before(10)
+		for j := range 40 {
+			lines = append(lines, `{"type":"assistant","isSidechain":true,"timestamp":"`+at(1+j)+`","message":{"content":[{"type":"text","text":"subagent"}]}}`)
+		}
+		i := len(lines)
+		lines = append(lines, before(12)...)
+		lines = append(lines, numbered(101, 10)...)
+		endReadFrom(lines, i)
+		a := activityFor(writeTranscript(t, lines...))
+		if !a.ReadLimited || a.OmittedAfter == nil || *a.OmittedAfter != 0 || a.Records[0].Text != "reply 101" || a.Records[len(a.Records)-1].Text != "reply 110" {
+			t.Fatalf("the skipped middle must be marked: %v %+v", texts(a), a)
 		}
 		noDuplicates(t, a)
 	})

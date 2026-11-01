@@ -148,12 +148,13 @@ output from a generated 800-prompt session (2,400 records).
   started and how the session ended. The MCP tool returns the same records,
   with `omitted` (how many were left out) and `omitted_after` (how many
   records come before the gap).
-- **Large transcripts:** a transcript over 32 MB is read in two parts, its
-  first 32 MB and its last 8 MB, so its last records always appear. The line
-  where the middle was skipped says that part of the transcript was not read
-  and there may be more; the MCP tool sets `read_limited`. If the jot itself
-  is in the skipped middle, only the last records are shown, with that line
-  first. Any single line over 4 MB is skipped.
+- **Large transcripts:** a transcript up to 40 MB is read whole. A larger
+  one is read in two parts, its first 32 MB and its last 8 MB, so the end of
+  the session is read too. Where the middle was skipped, a line says that
+  part of the transcript was not read and there may be more; the MCP tool
+  sets `read_limited`. If the jot itself may be in the skipped middle, only
+  the last records are shown, with that line first. Any single line over
+  4 MB is skipped.
 - **Claude Code and Claude Desktop jots only**, read from the transcript path
   recorded with the jot. Anything else prints `transcript: unavailable` and
   why: jots from `jotaside add`, Cursor and Codex (Codex transcripts are not read
