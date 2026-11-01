@@ -40,7 +40,10 @@ evidence; you judge it.
    and stop.
 2. `activity` with the id (CLI: `jotaside activity <id>`). It returns the
    prompts, agent text and collapsed tool calls recorded after the jot,
-   oldest first, in a capped amount.
+   oldest first, in a capped amount. When the session is longer than the cap,
+   you get its first and its last records, with the left-out part between
+   them (`omitted` records, after the first `omitted_after`; in the CLI, a
+   "left out here" line).
 3. Give one verdict, with the evidence:
    - **Done**: say what in the records shows it, quoting a short line or two
      ("after the jot you asked for the PR URLs, then it added review comments
@@ -52,9 +55,11 @@ evidence; you judge it.
    - **Can't tell**: `activity` says the transcript is `unavailable` (jots from
      Codex, Cursor or `jotaside add`, or a transcript that is gone), or the records
      are too thin to say.
-4. If `omitted` is above 0 or `read_limited` is set, you only saw the start of
-   what happened after the jot. Say so, and don't answer "no sign yet" for
-   something the rest might show; say "no sign in the part I could read".
+4. Judge from both the start and the end: the work is often finished near
+   the end of a long session, so a "done" in the last records counts as much
+   as one in the first. The left-out middle matters only when neither end
+   shows the work: then, if `omitted` is above 0 or `read_limited` is set,
+   say so, and answer "no sign in the part I could read", not "no sign yet".
 5. For a "done" verdict, offer `jotaside done <id> --note "<note>"`, using the
    full path to jotaside from the tool descriptions, or `jotaside` if the MCP tools
    aren't listed. Run it only when the user says to (see below). For a
@@ -132,8 +137,9 @@ it can't spend a pile of tokens on stale sessions.
   jots it didn't list; say so.
 - **Group by session.** Jots from the same `session_id` share one transcript.
   Call `activity` once per session, for its oldest open jot, and judge that
-  session's later jots from the same records. Where the cap cut records off
-  before a later jot, answer "can't tell" for it.
+  session's later jots from the same records. A later jot captured in the
+  left-out middle can only be judged from the last records: if they show the
+  work, it's done; if not, answer "can't tell" for it.
 - **Limit: about 10 sessions per run.** Each `activity` call can return around
   13 KB, so ten sessions is roughly 130 KB. Update the 10 sessions with the
   oldest open Claude Code and Claude Desktop jots (`source` is `claude`), and

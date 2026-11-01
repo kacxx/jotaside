@@ -968,3 +968,41 @@ func TestPrintInboxTitlePlacement(t *testing.T) {
 		t.Errorf("with location: %q", lines[1])
 	}
 }
+
+func TestPrintActivityShowsTheGapWhereItIs(t *testing.T) {
+	at := time.Date(2026, 10, 12, 2, 16, 0, 0, time.UTC)
+	rec := func(text string) app.ActivityRecord { return app.ActivityRecord{Role: "assistant", At: at, Text: text} }
+	pos := func(n int) *int { return &n }
+	for _, tc := range []struct {
+		name string
+		a    app.Activity
+		want string // the record texts and the gap line, in order
+	}{
+		{"whole", app.Activity{Records: []app.ActivityRecord{rec("first"), rec("last")}}, "first|last"},
+		{"over the cap", app.Activity{Records: []app.ActivityRecord{rec("first"), rec("last")}, Omitted: 7, OmittedAfter: pos(1)},
+			"first|(7 records left out here)|last"},
+		{"one left out", app.Activity{Records: []app.ActivityRecord{rec("first"), rec("last")}, Omitted: 1, OmittedAfter: pos(1)},
+			"first|(1 record left out here)|last"},
+		{"middle unread", app.Activity{Records: []app.ActivityRecord{rec("first"), rec("last")}, Omitted: 3, OmittedAfter: pos(1), ReadLimited: true},
+			"first|(3 records left out here; the transcript is large, so part of it here was not read and there may be more)|last"},
+		{"start unread", app.Activity{Records: []app.ActivityRecord{rec("last")}, OmittedAfter: pos(0), ReadLimited: true},
+			"(the transcript is large, so part of it here was not read and there may be more records)|last"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var out bytes.Buffer
+			printActivity(&out, tc.a)
+			var got []string
+			for _, line := range strings.Split(out.String(), "\n") {
+				switch {
+				case strings.HasPrefix(line, "("):
+					got = append(got, line)
+				case strings.Contains(line, "] agent: "):
+					got = append(got, line[strings.Index(line, "] agent: ")+len("] agent: "):])
+				}
+			}
+			if strings.Join(got, "|") != tc.want {
+				t.Fatalf("output:\n%s\nwant order: %s", out.String(), tc.want)
+			}
+		})
+	}
+}

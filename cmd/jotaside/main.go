@@ -569,7 +569,8 @@ func parseID(args []string) (int64, error) {
 	return id, nil
 }
 
-// printActivity prints what a jot's session did after it. The records are
+// printActivity prints what a jot's session did after it: the first and the
+// last records, with a line where the rest was left out. The records are
 // transcript text, so a line says so first.
 func printActivity(w io.Writer, a app.Activity) {
 	fmt.Fprintf(w, "Jot #%d, captured %s\n", a.JotID, a.CreatedAt.Local().Format("2006-01-02 15:04"))
@@ -582,17 +583,32 @@ func printActivity(w io.Writer, a app.Activity) {
 	if len(a.Records) == 0 {
 		fmt.Fprintln(w, "No activity recorded after the jot.")
 	}
-	for _, r := range a.Records {
+	for i, r := range a.Records {
+		if a.OmittedAfter != nil && *a.OmittedAfter == i {
+			printLeftOut(w, a)
+		}
 		who := map[string]string{"user": "you", "assistant": "agent", "tools": "tools"}[r.Role]
 		fmt.Fprintf(w, "[%s] %s: %s\n\n", r.At.Local().Format("2006-01-02 15:04"), who, r.Text)
 	}
+	if a.OmittedAfter != nil && *a.OmittedAfter >= len(a.Records) {
+		printLeftOut(w, a)
+	}
+}
+
+// printLeftOut prints the line that stands where activity left records out.
+func printLeftOut(w io.Writer, a app.Activity) {
+	records := "records"
+	if a.Omitted == 1 {
+		records = "record"
+	}
 	switch {
 	case a.Omitted > 0 && a.ReadLimited:
-		fmt.Fprintf(w, "(%d more records left out; the transcript is large, so reading stopped early and there may be more)\n", a.Omitted)
+		fmt.Fprintf(w, "(%d %s left out here; the transcript is large, so part of it here was not read and there may be more)\n\n", a.Omitted, records)
 	case a.Omitted > 0:
-		fmt.Fprintf(w, "(%d more records left out)\n", a.Omitted)
+		fmt.Fprintf(w, "(%d %s left out here)\n\n", a.Omitted, records)
 	case a.ReadLimited:
-		fmt.Fprintln(w, "(the transcript is large, so reading stopped early and there may be more)")
+		fmt.Fprintln(w, "(the transcript is large, so part of it here was not read and there may be more records)")
+		fmt.Fprintln(w)
 	}
 }
 
