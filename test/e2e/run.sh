@@ -91,13 +91,17 @@ hr "3. first run: empty inbox"
 OUT="$("$BIN" inbox 2>&1)"; echo "$OUT"
 echo "$OUT" | grep -qE '^#' && bad "inbox not empty on a fresh DB" || ok "inbox empty on first run"
 
-hr "4. CLI round-trip (add / inbox / search / show / done)"
+hr "4. CLI round-trip (add / inbox / search / show / check / done)"
 "$BIN" add "e2e note" >/dev/null && ok "add" || bad "add"
 "$BIN" inbox | grep -q "e2e note" && ok "inbox lists it" || bad "inbox missing it"
 "$BIN" search "e2e" | grep -q "e2e note" && ok "search finds it" || bad "search"
 ID="$("$BIN" inbox | grep -oE '#[0-9]+' | head -1 | tr -d '#')"
 if [ -n "$ID" ]; then
   "$BIN" show "$ID" | grep -q "e2e note" && ok "show #$ID" || bad "show"
+  "$BIN" inbox | grep "e2e note" | grep -q "(checked" && bad "a never-checked jot shows a checked marker" || ok "no marker before check"
+  [ "$("$BIN" check "$ID")" = "✓ #$ID checked" ] && ok "check #$ID" || bad "check"
+  "$BIN" inbox | grep "e2e note" | grep -qE '  \(checked today\)$' && ok "inbox marks it (checked today)" || bad "inbox missing the checked marker"
+  "$BIN" show "$ID" | grep -qE '^checked: ' && ok "show prints checked:" || bad "show missing checked:"
   "$BIN" done "$ID" >/dev/null && ok "done #$ID" || bad "done"
 else
   bad "could not parse a jot id from inbox"

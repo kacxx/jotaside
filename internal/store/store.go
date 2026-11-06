@@ -91,6 +91,9 @@ type Entry struct {
 	// DoneNote is metadata's done_note, the reason the jot was closed. Like
 	// IssueURL it is read from metadata, never written by Insert.
 	DoneNote string `json:"done_note,omitempty"`
+	// LastCheckedAt is metadata's last_checked_at: when jotaside check last
+	// recorded that the jot was looked at and not finished. Zero if never.
+	LastCheckedAt time.Time `json:"last_checked_at,omitzero"`
 	// OpenURL links to the jot's source chat. It is never stored; the app
 	// layer fills it in for the entries it returns on request.
 	OpenURL string `json:"open_url,omitempty"`
@@ -111,6 +114,10 @@ const (
 	MetaDoneNote = "done_note"
 	MetaDoneAt   = "done_at"
 )
+
+// MetaLastCheckedAt is the metadata key written by jotaside check: when the
+// jot was last looked at and found not finished (UTC).
+const MetaLastCheckedAt = "last_checked_at"
 
 // Metadata keys a Claude Code capture may record. MetaDesktopSession is
 // Claude Desktop's own session id (local_<uuid>); it is a hint, so check it
@@ -501,7 +508,7 @@ func (s *Store) SetMetadata(ctx context.Context, id int64, key string, value any
 	return tx.Commit()
 }
 
-// MissingError is returned by Done when some ids do not exist. It matches
+// MissingError is returned by Done and Check when some ids do not exist. It matches
 // ErrNotFound.
 type MissingError struct{ IDs []int64 }
 
@@ -529,34 +536,9 @@ func (s *Store) Done(ctx context.Context, ids []int64, note string, now time.Tim
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
-	type row struct {
-		meta map[string]json.RawMessage
-		done bool
-	}
-	rows := make(map[int64]row, len(ids))
-	var missing []int64
-	for _, id := range ids {
-		if _, seen := rows[id]; seen {
-			continue
-		}
-		var raw, status string
-		err := tx.QueryRowContext(ctx, `SELECT metadata, status FROM entries WHERE id = ?`, id).Scan(&raw, &status)
-		if errors.Is(err, sql.ErrNoRows) {
-			missing = append(missing, id)
-			rows[id] = row{}
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		meta := map[string]json.RawMessage{}
-		if err := json.Unmarshal([]byte(raw), &meta); err != nil || meta == nil {
-			return nil, fmt.Errorf("entry %d: metadata is not a JSON object", id)
-		}
-		rows[id] = row{meta: meta, done: status == StatusDone}
-	}
-	if len(missing) > 0 {
-		return nil, &MissingError{IDs: missing}
+	rows, err := loadRows(ctx, tx, ids)
+	if err != nil {
+		return nil, err
 	}
 	changed := make(map[int64]bool, len(rows))
 	for id, r := range rows {
@@ -585,6 +567,82 @@ func (s *Store) Done(ctx context.Context, ids []int64, note string, now time.Tim
 		return nil, err
 	}
 	return changed, nil
+}
+
+// metaRow is one entry's metadata and whether it is done, as read by loadRows.
+type metaRow struct {
+	meta map[string]json.RawMessage
+	done bool
+}
+
+// loadRows reads the metadata and status of every entry in ids inside tx. If
+// any id does not exist it returns a *MissingError naming all of them. A
+// repeated id is read once.
+func loadRows(ctx context.Context, tx *sql.Tx, ids []int64) (map[int64]metaRow, error) {
+	rows := make(map[int64]metaRow, len(ids))
+	var missing []int64
+	for _, id := range ids {
+		if _, seen := rows[id]; seen {
+			continue
+		}
+		var raw, status string
+		err := tx.QueryRowContext(ctx, `SELECT metadata, status FROM entries WHERE id = ?`, id).Scan(&raw, &status)
+		if errors.Is(err, sql.ErrNoRows) {
+			missing = append(missing, id)
+			rows[id] = metaRow{}
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		meta := map[string]json.RawMessage{}
+		if err := json.Unmarshal([]byte(raw), &meta); err != nil || meta == nil {
+			return nil, fmt.Errorf("entry %d: metadata is not a JSON object", id)
+		}
+		rows[id] = metaRow{meta: meta, done: status == StatusDone}
+	}
+	if len(missing) > 0 {
+		return nil, &MissingError{IDs: missing}
+	}
+	return rows, nil
+}
+
+// Check records that every open entry in ids was looked at and not finished,
+// setting metadata last_checked_at to now (UTC) and replacing an earlier
+// stamp, in one transaction. If any id does not exist it returns a
+// *MissingError naming all of them and changes nothing. A done entry is left
+// alone. The result has every id: true if it was stamped, false if it is done.
+func (s *Store) Check(ctx context.Context, ids []int64, now time.Time) (map[int64]bool, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = tx.Rollback() }()
+	rows, err := loadRows(ctx, tx, ids)
+	if err != nil {
+		return nil, err
+	}
+	stamp, _ := json.Marshal(now.UTC().Format(timeLayout))
+	stamped := make(map[int64]bool, len(rows))
+	for id, r := range rows {
+		if r.done {
+			stamped[id] = false
+			continue
+		}
+		stamped[id] = true
+		r.meta[MetaLastCheckedAt] = stamp
+		b, err := json.Marshal(r.meta)
+		if err != nil {
+			return nil, err
+		}
+		if _, err := tx.ExecContext(ctx, `UPDATE entries SET metadata = ? WHERE id = ?`, string(b), id); err != nil {
+			return nil, err
+		}
+	}
+	if err := tx.Commit(); err != nil {
+		return nil, err
+	}
+	return stamped, nil
 }
 
 // Backup writes a consistent copy of the database to dst using VACUUM INTO.
@@ -656,6 +714,12 @@ func scan(rows *sql.Rows) ([]Entry, error) {
 			if json.Unmarshal(e.Metadata, &m) == nil {
 				e.IssueURL, _ = m[MetaIssueURL].(string)
 				e.DoneNote, _ = m[MetaDoneNote].(string)
+				if v, ok := m[MetaLastCheckedAt].(string); ok {
+					// A stamp that doesn't parse is ignored, as if never checked.
+					if t, err := time.Parse(time.RFC3339, v); err == nil {
+						e.LastCheckedAt = t.UTC()
+					}
+				}
 			}
 		}
 		out = append(out, e)

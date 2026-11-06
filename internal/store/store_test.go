@@ -570,3 +570,58 @@ func TestSetMetadataDoneAt(t *testing.T) {
 		t.Fatalf("closing through SetMetadata records done_at: %s", e.Metadata)
 	}
 }
+
+func TestCheck(t *testing.T) {
+	ctx := context.Background()
+	s, _ := openTemp(t)
+	for _, txt := range []string{"a", "b", "c"} {
+		if _, err := s.Insert(ctx, &Entry{Text: txt, Metadata: json.RawMessage(`{"k":"v"}`)}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t1 := time.Date(2026, 11, 7, 1, 2, 3, 0, time.FixedZone("x", 3600))
+	if _, err := s.Done(ctx, []int64{3}, "", t1); err != nil {
+		t.Fatal(err)
+	}
+	// A missing id fails naming every missing one and stamps nothing.
+	var miss *MissingError
+	_, err := s.Check(ctx, []int64{1, 9, 2, 8}, t1)
+	if !errors.As(err, &miss) || !errors.Is(err, ErrNotFound) || len(miss.IDs) != 2 {
+		t.Fatalf("missing: %v", err)
+	}
+	if e, _ := s.Get(ctx, 1); !e.LastCheckedAt.IsZero() || strings.Contains(string(e.Metadata), MetaLastCheckedAt) {
+		t.Fatalf("batch must be all or nothing: %s", e.Metadata)
+	}
+	// Open jots are stamped in UTC and keep their other keys; a done jot is
+	// reported and left alone; a repeated id counts once.
+	got, err := s.Check(ctx, []int64{1, 3, 2, 1}, t1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 3 || !got[1] || !got[2] || got[3] {
+		t.Fatalf("stamped: %v", got)
+	}
+	e, _ := s.Get(ctx, 1)
+	if !e.LastCheckedAt.Equal(t1) || e.LastCheckedAt.Location() != time.UTC || e.Status != StatusInbox ||
+		!strings.Contains(string(e.Metadata), `"last_checked_at":"2026-11-07T00:02:03.000Z"`) || !strings.Contains(string(e.Metadata), `"k":"v"`) {
+		t.Fatalf("check: %+v %s", e, e.Metadata)
+	}
+	if e, _ := s.Get(ctx, 3); !e.LastCheckedAt.IsZero() || e.Status != StatusDone {
+		t.Fatalf("done jot must not be stamped: %s", e.Metadata)
+	}
+	// A later check replaces the stamp.
+	t2 := t1.Add(48 * time.Hour)
+	if _, err := s.Check(ctx, []int64{1}, t2); err != nil {
+		t.Fatal(err)
+	}
+	if e, _ := s.Get(ctx, 1); !e.LastCheckedAt.Equal(t2) {
+		t.Fatalf("replace: %s", e.Metadata)
+	}
+	// done keeps the stamp.
+	if _, err := s.Done(ctx, []int64{1}, "finished", t2); err != nil {
+		t.Fatal(err)
+	}
+	if e, _ := s.Get(ctx, 1); !e.LastCheckedAt.Equal(t2) || e.Status != StatusDone {
+		t.Fatalf("done must keep last_checked_at: %s", e.Metadata)
+	}
+}
