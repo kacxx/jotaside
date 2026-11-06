@@ -137,6 +137,9 @@ records the results for the initial version.
 - Changes go through a PR on a branch, with tests. CI must be green.
 - Releases come from release-please: it reads conventional commit messages
   on `main` and keeps a release PR open. Merging that PR tags the release.
+  Before 1.0, `feat:` and `fix:` both bump the patch (0.1.2 → 0.1.3) and
+  only a breaking change bumps the minor (`release-please-config.json`). Don't
+  add a `Release-As` footer unless the owner asks for a specific version.
   Only `feat:`, `fix:` and breaking (`feat!:`) commits make a release; `docs:`,
   `ci:` and `chore:` commits appear in no release on their own. Commits
   without a prefix are ignored. The repo squashes with the commit message
