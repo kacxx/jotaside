@@ -92,7 +92,7 @@ type Entry struct {
 	// IssueURL it is read from metadata, never written by Insert.
 	DoneNote string `json:"done_note,omitempty"`
 	// LastCheckedAt is metadata's last_checked_at: when jotaside check last
-	// recorded that the jot was looked at and not finished. Zero if never.
+	// recorded that the jot was looked at and left open. Zero if never.
 	LastCheckedAt time.Time `json:"last_checked_at,omitzero"`
 	// OpenURL links to the jot's source chat. It is never stored; the app
 	// layer fills it in for the entries it returns on request.
@@ -116,7 +116,8 @@ const (
 )
 
 // MetaLastCheckedAt is the metadata key written by jotaside check: when the
-// jot was last looked at and found not finished (UTC).
+// jot was last looked at and left open (UTC). It records when, not what was
+// found.
 const MetaLastCheckedAt = "last_checked_at"
 
 // Metadata keys a Claude Code capture may record. MetaDesktopSession is
@@ -607,7 +608,7 @@ func loadRows(ctx context.Context, tx *sql.Tx, ids []int64) (map[int64]metaRow, 
 	return rows, nil
 }
 
-// Check records that every open entry in ids was looked at and not finished,
+// Check records that every open entry in ids was looked at and left open,
 // setting metadata last_checked_at to now (UTC) and replacing an earlier
 // stamp, in one transaction. If any id does not exist it returns a
 // *MissingError naming all of them and changes nothing. A done entry is left

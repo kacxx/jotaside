@@ -345,8 +345,8 @@ little or nothing does.
 The jotaside skill tells an agent how to use those tools: "update jot 12" checks
 the jot's session for signs it was done and offers `jotaside done` with a note,
 plus a follow-up jot for any open work left behind, or `jotaside check` to record
-that it isn't done yet; "update all" does the same across the inbox, least
-recently checked first.
+when it was last looked at if it stays open; "update all" does the same across
+the inbox, least recently checked first.
 
 In Claude Code, in the terminal or in Claude Desktop, install it as a plugin:
 
@@ -390,7 +390,7 @@ jotaside, so the skill matches the binary.
 | `jotaside sessions [-n N]` | Recent chats with their labels (default 10) |
 | `jotaside activity <id>` | What a jot's own chat did after it (Claude Code and Claude Desktop jots) |
 | `jotaside done <id>... [--note "why"]` | Mark jots done; `--note` records why (search finds it) |
-| `jotaside check <id>...` | Record that open jots were checked and aren't done yet; the inbox shows `(checked 2d ago)` |
+| `jotaside check <id>...` | Record when open jots were last looked at and left open; the inbox shows `(checked 2d ago)` |
 | `jotaside promote <id> [--repo owner/name] [--with-reply] [--yes [--public]] [--dry-run]` | Turn a jot into a GitHub issue; asks first unless `--yes`, which needs `--public` for a public repo |
 | `jotaside backup <path>` | Copy the database safely; never overwrites |
 | `jotaside paths` | Where the data and binary are |

@@ -941,10 +941,9 @@ func TestLastCheckedAtInTools(t *testing.T) {
 		if ann, _ := tl["annotations"].(map[string]any); ann["readOnlyHint"] != true {
 			t.Errorf("%s must be read-only", tl["name"])
 		}
-		if n := tl["name"]; n == "inbox" || n == "show" || n == "activity" {
-			if d := tl["description"].(string); !strings.Contains(d, "last_checked_at") {
-				t.Errorf("%s description should explain last_checked_at: %s", n, d)
-			}
+		// Every tool returns the field, so every description explains it.
+		if d := tl["description"].(string); !strings.Contains(d, checkedNote) {
+			t.Errorf("%s description should explain last_checked_at: %s", tl["name"], d)
 		}
 	}
 	if got := strings.Join(names, ","); got != "inbox,show,search,find,sessions,activity" {

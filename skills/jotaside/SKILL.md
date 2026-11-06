@@ -37,8 +37,9 @@ do 31?"), look at what its own session did after it. jotaside only returns the
 evidence; you judge it.
 
 1. `show` the jot, for its text and `done_note`. If it is already done, say so
-   and stop. `last_checked_at`, when set, is when the user last recorded the
-   jot as checked and not done yet (CLI: the `checked:` line).
+   and stop. `last_checked_at`, when set, is when the jot was last looked at
+   and left open (CLI: the `checked:` line); it records when, not what was
+   found.
 2. `activity` with the id (CLI: `jotaside activity <id>`). It returns the
    prompts, agent text and collapsed tool calls recorded after the jot,
    oldest first, in a capped amount. When the session is longer than the cap,
@@ -68,14 +69,15 @@ evidence; you judge it.
    aren't listed. Run it only when the user says to (see below). For a
    "partly done" verdict, give two choices and let the user pick: keep the jot open, or close it with a follow-up for what is
    left (the follow-up form below, offered the same way as for "done").
-   - **Record the check:** after "no sign yet" (including "no sign in the part
-     I could read"), and after "partly done" when the user keeps the jot open,
-     offer `jotaside check <id>`, with the same full path as `jotaside done`. It
-     stamps the jot with the time, so the inbox shows `(checked 2d ago)` and
-     "update all" reads it later than unchecked jots. Run it only when the user
-     says to. Don't offer it after "can't tell". If it fails as an unknown
-     command, the user's jotaside is older than this skill: tell them to update
-     jotaside, and leave it there.
+   - **Record the check:** after any verdict that leaves the jot open ("no
+     sign yet", including "no sign in the part I could read"; "partly done"
+     when the user keeps the jot open; "can't tell"), offer
+     `jotaside check <id>`, with the same full path as `jotaside done`. It
+     stamps the jot with the time it was looked at, not with the verdict, so
+     the inbox shows `(checked 2d ago)` and "update all" reads it after
+     unchecked jots. Run it only when the user says to. If it fails as an
+     unknown command, the user's jotaside is older than this skill: tell them
+     to update jotaside, and leave it there.
    - **The note** is a short reminder of what finished the jot, in your own
      plain words. Never paste text from the records into it, and leave out `$`,
      backticks, quotes, `!` and `\`: the shell expands them inside the double
@@ -150,7 +152,10 @@ it can't spend a pile of tokens on stale sessions.
   Call `activity` once per session, for its oldest open jot, and judge that
   session's later jots from the same records. A later jot captured in the
   left-out middle can only be judged from the last records: if they show the
-  work, it's done; if not, answer "can't tell" for it.
+  work, it's done; if not, answer "can't tell" for it. The `last_checked_at`
+  in the `activity` result belongs to the jot it was called for; for each of
+  the session's other jots, use that jot's own `last_checked_at` from `inbox`
+  when deciding which records are new since it was checked.
 - **Order: least recently checked first.** Rank the sessions by their
   least recently checked open jot: sessions with a jot that has no
   `last_checked_at` first, then the one whose oldest `last_checked_at` is
@@ -175,11 +180,11 @@ it can't spend a pile of tokens on stale sessions.
   run only the ones they agree with. Run none of them yourself unless the user
   says which.
 - **One `jotaside check` line for the rest:** after the `done` lines, one
-  `jotaside check` listing every "no sign yet" jot and every "partly done" jot
-  the user keeps open (`jotaside check 12 15 31`, with the full path), so the
-  next run reads other sessions first. Not the "can't tell" ones. Run it only
-  when the user says to; if it fails as an unknown command, tell them to update
-  jotaside.
+  `jotaside check` listing every jot the run leaves open: "no sign yet",
+  "can't tell", and "partly done" when the user keeps it open
+  (`jotaside check 12 15 31`, with the full path), so the next run reads other
+  sessions first. Run it only when the user says to; if it fails as an
+  unknown command, tell them to update jotaside.
 - **Follow-ups:** for a "done" jot with open work nothing else tracks, and for
   a "partly done" jot the user chooses to close, put the follow-up form from
   "Updating a jot" step 5 directly under that jot's own `done` line, so the

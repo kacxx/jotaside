@@ -200,8 +200,8 @@ func (s *Service) DoneAll(ctx context.Context, ids []int64, note string) (map[in
 	return s.store.Done(ctx, ids, note, time.Now())
 }
 
-// CheckAll records that every open entry in ids was looked at and not
-// finished (metadata last_checked_at, now in UTC), or changes nothing if any
+// CheckAll records that every open entry in ids was looked at and left
+// open (metadata last_checked_at, now in UTC), or changes nothing if any
 // id is missing (the error is a *store.MissingError). The result has every
 // id: true if it was stamped, false if the jot is done and was left alone.
 func (s *Service) CheckAll(ctx context.Context, ids []int64) (map[int64]bool, error) {

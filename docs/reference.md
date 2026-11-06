@@ -210,10 +210,12 @@ when there is none.
 
 ## Check
 
-`jotaside check <id>...` records that open jots were checked and aren't done
-yet, typically after an agent's "update jot" or "update all" found no sign of
-the work. The inbox then shows when, and the skill's "update all" reads
-never-checked and longest-unchecked sessions first.
+`jotaside check <id>...` records when open jots were last looked at and left
+open, typically after an agent's "update jot" or "update all" gave a verdict
+that keeps the jot open ("no sign yet", "partly done" kept open, or "can't
+tell"). It records when, not what was found. The inbox then shows when, and
+the skill's "update all" reads never-checked and longest-unchecked sessions
+first.
 
 ```
 $ jotaside check 1 3

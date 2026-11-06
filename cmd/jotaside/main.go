@@ -60,7 +60,7 @@ Usage:
   jotaside find <query...>      sessions with a jot matching the query, and how to resume them
   jotaside sessions [-n N]      recent sessions with their label (default 10, 0 = all)
   jotaside done <id>... [--note "why"]  mark jots as done, optionally recording why
-  jotaside check <id>...        record that open jots were checked and aren't done yet
+  jotaside check <id>...        record when open jots were last looked at and left open
   jotaside promote <id> [--repo owner/name] [--with-reply] [--yes [--public]] [--dry-run]
                                 turn a jot into a GitHub issue with the gh CLI
   jotaside backup <path>        write a consistent copy of the database (never overwrites)
@@ -371,8 +371,8 @@ func cmdDone(ctx context.Context, svc *app.Service, args []string, w io.Writer) 
 	return nil
 }
 
-// cmdCheck stamps open jots with the time they were last checked and found
-// not done. It takes ids only: the verdict stays in the chat (#26 D7).
+// cmdCheck stamps open jots with the time they were last looked at and left
+// open. It takes ids only: the verdict stays in the chat (#26 D7).
 func cmdCheck(ctx context.Context, svc *app.Service, args []string, w io.Writer) error {
 	const usage = "usage: jotaside check <id>..."
 	if len(args) == 0 {
