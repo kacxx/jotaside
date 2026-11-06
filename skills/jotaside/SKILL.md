@@ -180,10 +180,11 @@ it can't spend a pile of tokens on stale sessions.
   run only the ones they agree with. Run none of them yourself unless the user
   says which.
 - **One `jotaside check` line for the rest:** after the `done` lines, one
-  `jotaside check` listing every jot the run leaves open: "no sign yet",
-  "can't tell", and "partly done" when the user keeps it open
-  (`jotaside check 12 15 31`, with the full path), so the next run reads other
-  sessions first. Run it only when the user says to; if it fails as an
+  `jotaside check` listing every jot this run gave a verdict that leaves it
+  open: "no sign yet", "can't tell", and "partly done" when the user keeps it
+  open (`jotaside check 12 15 31`, with the full path), so the next run reads
+  other sessions first. Leave out jots in the sessions skipped past the limit:
+  they weren't looked at, and stamping them would undo the order. Run it only when the user says to; if it fails as an
   unknown command, tell them to update jotaside.
 - **Follow-ups:** for a "done" jot with open work nothing else tracks, and for
   a "partly done" jot the user chooses to close, put the follow-up form from
