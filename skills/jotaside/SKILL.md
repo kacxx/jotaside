@@ -37,7 +37,9 @@ do 31?"), look at what its own session did after it. jotaside only returns the
 evidence; you judge it.
 
 1. `show` the jot, for its text and `done_note`. If it is already done, say so
-   and stop.
+   and stop. `last_checked_at`, when set, is when the jot was last looked at
+   and left open (CLI: the `checked:` line); it records when, not what was
+   found.
 2. `activity` with the id (CLI: `jotaside activity <id>`). It returns the
    prompts, agent text and collapsed tool calls recorded after the jot,
    oldest first, in a capped amount. When the session is longer than the cap,
@@ -60,11 +62,22 @@ evidence; you judge it.
    as one in the first. The left-out middle matters only when neither end
    shows the work: then, if `omitted` is above 0 or `read_limited` is set,
    say so, and answer "no sign in the part I could read", not "no sign yet".
+   If the jot has a `last_checked_at`, records with a later `at` are new since
+   that check; say whether any of them bear on the jot.
 5. For a "done" verdict, offer `jotaside done <id> --note "<note>"`, using the
    full path to jotaside from the tool descriptions, or `jotaside` if the MCP tools
    aren't listed. Run it only when the user says to (see below). For a
    "partly done" verdict, give two choices and let the user pick: keep the jot open, or close it with a follow-up for what is
    left (the follow-up form below, offered the same way as for "done").
+   - **Record the check:** after any verdict that leaves the jot open ("no
+     sign yet", including "no sign in the part I could read"; "partly done"
+     when the user keeps the jot open; "can't tell"), offer
+     `jotaside check <id>`, with the same full path as `jotaside done`. It
+     stamps the jot with the time it was looked at, not with the verdict, so
+     the inbox shows `(checked 2d ago)` and "update all" reads it after
+     unchecked jots. Run it only when the user says to. If it fails as an
+     unknown command, the user's jotaside is older than this skill: tell them
+     to update jotaside, and leave it there.
    - **The note** is a short reminder of what finished the jot, in your own
      plain words. Never paste text from the records into it, and leave out `$`,
      backticks, quotes, `!` and `\`: the shell expands them inside the double
@@ -133,18 +146,26 @@ the user's jots.
 it can't spend a pile of tokens on stale sessions.
 
 - **Which jots:** `inbox` with `limit` 200 (the most it returns), keeping jots
-  that have a `session_id`, oldest first. If it returns 200, there may be older
-  jots it didn't list; say so.
+  that have a `session_id`. If it returns 200, there may be older jots it
+  didn't list; say so.
 - **Group by session.** Jots from the same `session_id` share one transcript.
   Call `activity` once per session, for its oldest open jot, and judge that
   session's later jots from the same records. A later jot captured in the
   left-out middle can only be judged from the last records: if they show the
-  work, it's done; if not, answer "can't tell" for it.
+  work, it's done; if not, answer "can't tell" for it. The `last_checked_at`
+  in the `activity` result belongs to the jot it was called for; for each of
+  the session's other jots, use that jot's own `last_checked_at` from `inbox`
+  when deciding which records are new since it was checked.
+- **Order: least recently checked first.** Rank the sessions by their
+  least recently checked open jot: sessions with a jot that has no
+  `last_checked_at` first, then the one whose oldest `last_checked_at` is
+  oldest. Break ties by the oldest open jot, oldest first. Without this, every
+  run would read the same sessions again.
 - **Limit: about 10 sessions per run.** Each `activity` call can return around
-  13 KB, so ten sessions is roughly 130 KB. Update the 10 sessions with the
-  oldest open Claude Code and Claude Desktop jots (`source` is `claude`), and
-  say how many sessions and jots you skipped and that the user can ask again
-  after closing some. Don't go past 10 sessions.
+  13 KB, so ten sessions is roughly 130 KB. Update the first 10 sessions in
+  that order with open Claude Code and Claude Desktop jots (`source` is
+  `claude`), and say how many sessions and jots you skipped and that the user
+  can ask again. Don't go past 10 sessions.
 - **Other sources:** don't call `activity` for jots from Codex or Cursor; their
   transcripts aren't read. List them in one line as "can't tell". They don't
   count toward the 10.
@@ -158,6 +179,13 @@ it can't spend a pile of tokens on stale sessions.
   from the records, no `$`, backticks, quotes, `!` or `\`. Don't merge them into one command, so the user can
   run only the ones they agree with. Run none of them yourself unless the user
   says which.
+- **One `jotaside check` line for the rest:** after the `done` lines, one
+  `jotaside check` listing every jot this run gave a verdict that leaves it
+  open: "no sign yet", "can't tell", and "partly done" when the user keeps it
+  open (`jotaside check 12 15 31`, with the full path), so the next run reads
+  other sessions first. Leave out jots in the sessions skipped past the limit:
+  they weren't looked at, and stamping them would undo the order. Run it only when the user says to; if it fails as an
+  unknown command, tell them to update jotaside.
 - **Follow-ups:** for a "done" jot with open work nothing else tracks, and for
   a "partly done" jot the user chooses to close, put the follow-up form from
   "Updating a jot" step 5 directly under that jot's own `done` line, so the
@@ -170,7 +198,7 @@ it can't spend a pile of tokens on stale sessions.
 
 ## Things to leave to the user
 
-- Don't run `jotaside done`, `jotaside promote` or `jotaside add` on your own. Closing a
+- Don't run `jotaside done`, `jotaside check`, `jotaside promote` or `jotaside add` on your own. Closing a
   jot hides it from the inbox, and promoting one publishes it as a GitHub
   issue. If a jot looks finished or like a task, say so and offer the command;
   run it only when the user says to. When they do, use the full path to jotaside

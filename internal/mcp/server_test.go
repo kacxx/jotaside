@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -851,5 +852,101 @@ func TestActivityToolOverTheCap(t *testing.T) {
 	}
 	if strings.Join(got, ",") != "r0,r1,r2,r3,r16,r17,r18,r19" || sc.Omitted != 12 || sc.OmittedAfter == nil || *sc.OmittedAfter != 4 {
 		t.Fatalf("records %v, omitted %d after %v", got, sc.Omitted, sc.OmittedAfter)
+	}
+}
+
+func TestLastCheckedAtInTools(t *testing.T) {
+	ctx := context.Background()
+	svc, err := app.Open(filepath.Join(t.TempDir(), "jot.db"), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	for _, req := range []app.CaptureRequest{
+		{Text: "checked jot", Source: "claude", SessionID: "s1", Metadata: map[string]any{"transcript_path": filepath.Join(t.TempDir(), "gone.jsonl")}},
+		{Text: "unchecked jot", Source: "claude", SessionID: "s2"},
+	} {
+		if _, err := svc.Capture(ctx, req); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := svc.CheckAll(ctx, []int64{1}); err != nil {
+		t.Fatal(err)
+	}
+	srv := NewServer(svc, "test")
+	text := func(tool, args string) string {
+		t.Helper()
+		res, rerr := srv.callTool(ctx, tool, json.RawMessage(args))
+		if rerr != nil {
+			t.Fatal(rerr)
+		}
+		m := res.(map[string]any)
+		if m["isError"] == true {
+			t.Fatalf("%s %s: %v", tool, args, m)
+		}
+		return m["content"].([]map[string]any)[0]["text"].(string)
+	}
+	// stamps counts last_checked_at fields outside metadata, which holds the
+	// stored copy.
+	var stamps func(v any) int
+	stamps = func(v any) int {
+		n := 0
+		switch x := v.(type) {
+		case map[string]any:
+			for k, c := range x {
+				if k == "metadata" {
+					continue
+				}
+				if s, ok := c.(string); ok && k == "last_checked_at" && regexp.MustCompile(`^\d{4}-\d\d-\d\dT[\d:.]+Z$`).MatchString(s) {
+					n++
+				}
+				n += stamps(c)
+			}
+		case []any:
+			for _, c := range x {
+				n += stamps(c)
+			}
+		}
+		return n
+	}
+	count := func(tool, args string) int {
+		t.Helper()
+		var v any
+		if err := json.Unmarshal([]byte(text(tool, args)), &v); err != nil {
+			t.Fatal(err)
+		}
+		return stamps(v)
+	}
+	for _, c := range []struct{ tool, args string }{
+		{"inbox", `{}`},
+		{"show", `{"id":1}`},
+		{"search", `{"query":"checked jot"}`},
+		{"find", `{"query":"checked jot"}`},
+		{"sessions", `{}`},
+		{"activity", `{"id":1}`},
+	} {
+		if n := count(c.tool, c.args); n != 1 {
+			t.Errorf("%s should carry jot 1's last_checked_at once, got %d: %s", c.tool, n, text(c.tool, c.args))
+		}
+	}
+	for _, c := range []struct{ tool, args string }{{"show", `{"id":2}`}, {"activity", `{"id":2}`}} {
+		if got := text(c.tool, c.args); strings.Contains(got, "last_checked_at") {
+			t.Errorf("a never-checked jot has no last_checked_at in %s: %s", c.tool, got)
+		}
+	}
+	// check is CLI only: no new tool, and every tool stays read-only.
+	var names []string
+	for _, tl := range srv.toolList() {
+		names = append(names, tl["name"].(string))
+		if ann, _ := tl["annotations"].(map[string]any); ann["readOnlyHint"] != true {
+			t.Errorf("%s must be read-only", tl["name"])
+		}
+		// Every tool returns the field, so every description explains it.
+		if d := tl["description"].(string); !strings.Contains(d, checkedNote) {
+			t.Errorf("%s description should explain last_checked_at: %s", tl["name"], d)
+		}
+	}
+	if got := strings.Join(names, ","); got != "inbox,show,search,find,sessions,activity" {
+		t.Errorf("tools = %s", got)
 	}
 }

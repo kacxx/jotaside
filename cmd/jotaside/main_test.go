@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"strings"
 	"testing"
@@ -1007,5 +1008,66 @@ func TestPrintActivityShowsTheGapWhereItIs(t *testing.T) {
 				t.Fatalf("output:\n%s\nwant order: %s", out.String(), tc.want)
 			}
 		})
+	}
+}
+
+func TestCLICheck(t *testing.T) {
+	t.Setenv("JOT_DB", filepath.Join(t.TempDir(), "jot.db"))
+	old := now
+	t.Cleanup(func() { now = old })
+	now = time.Now
+	sh := func(args ...string) (string, error) {
+		var out bytes.Buffer
+		err := run(args, strings.NewReader(""), &out)
+		return out.String(), err
+	}
+	for _, txt := range []string{"one", "two", "three"} {
+		if _, err := sh("add", txt); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := sh("done", "3"); err != nil {
+		t.Fatal(err)
+	}
+	// Never checked: the inbox line is unchanged and show has no checked line.
+	if got, _ := sh("inbox"); strings.Contains(got, "(checked") {
+		t.Fatalf("never-checked inbox: %q", got)
+	}
+	// A missing id fails naming it and stamps nothing.
+	if _, err := sh("check", "1", "99", "98"); err == nil || !strings.Contains(err.Error(), "no jots #99, #98") {
+		t.Fatalf("check with missing ids: %v", err)
+	}
+	if got, _ := sh("inbox"); strings.Contains(got, "(checked") {
+		t.Fatalf("nothing should be stamped: %q", got)
+	}
+	if got, err := sh("check", "1", "#3", "1"); err != nil || got != "✓ #1 checked\n#3 is done, not checked\n" {
+		t.Fatalf("check: %q %v", got, err)
+	}
+	// The marker ends the line, after the repo and branch.
+	got, _ := sh("inbox")
+	if !regexp.MustCompile(`(?m)^#1 .* one\b.*  \(checked today\)$`).MatchString(got) || strings.Count(got, "(checked") != 1 {
+		t.Fatalf("inbox marker: %q", got)
+	}
+	if got, _ := sh("show", "1"); !regexp.MustCompile(`(?m)^checked:   \d{4}-\d\d-\d\dT`).MatchString(got) {
+		t.Fatalf("show checked line: %q", got)
+	}
+	if got, _ := sh("show", "2"); strings.Contains(got, "checked:") {
+		t.Fatalf("never-checked show: %q", got)
+	}
+	now = func() time.Time { return time.Now().AddDate(0, 0, 2) }
+	if got, _ := sh("inbox"); !regexp.MustCompile(`(?m)^#1 .*  \(checked 2d ago\)$`).MatchString(got) {
+		t.Fatalf("inbox marker 2d: %q", got)
+	}
+	// done keeps the stamp.
+	if _, err := sh("done", "1"); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := sh("show", "1"); !strings.Contains(got, "checked:") || !strings.Contains(got, "last_checked_at") {
+		t.Fatalf("done keeps the stamp: %q", got)
+	}
+	for _, args := range [][]string{{"check"}, {"check", "x"}, {"check", "1", "--note", "n"}} {
+		if _, err := sh(args...); err == nil {
+			t.Errorf("%v must fail", args)
+		}
 	}
 }

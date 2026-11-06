@@ -60,6 +60,7 @@ Usage:
   jotaside find <query...>      sessions with a jot matching the query, and how to resume them
   jotaside sessions [-n N]      recent sessions with their label (default 10, 0 = all)
   jotaside done <id>... [--note "why"]  mark jots as done, optionally recording why
+  jotaside check <id>...        record when open jots were last looked at and left open
   jotaside promote <id> [--repo owner/name] [--with-reply] [--yes [--public]] [--dry-run]
                                 turn a jot into a GitHub issue with the gh CLI
   jotaside backup <path>        write a consistent copy of the database (never overwrites)
@@ -298,6 +299,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		}
 	case "done":
 		return cmdDone(ctx, svc, args, stdout)
+	case "check":
+		return cmdCheck(ctx, svc, args, stdout)
 	case "promote":
 		return cmdPromote(ctx, svc, args, stdin, stdout)
 	case "backup":
@@ -363,6 +366,40 @@ func cmdDone(ctx context.Context, svc *app.Service, args []string, w io.Writer) 
 			fmt.Fprintf(w, "✓ #%d done\n", id)
 		} else {
 			fmt.Fprintf(w, "#%d already done\n", id)
+		}
+	}
+	return nil
+}
+
+// cmdCheck stamps open jots with the time they were last looked at and left
+// open. It takes ids only: the verdict stays in the chat (#26 D7).
+func cmdCheck(ctx context.Context, svc *app.Service, args []string, w io.Writer) error {
+	const usage = "usage: jotaside check <id>..."
+	if len(args) == 0 {
+		return errors.New("expected at least one jot id (" + usage + ")")
+	}
+	ids := make([]int64, len(args))
+	for i, a := range args {
+		id, err := parseID([]string{a})
+		if err != nil {
+			return fmt.Errorf("%w (%s)", err, usage)
+		}
+		ids[i] = id
+	}
+	stamped, err := svc.CheckAll(ctx, ids)
+	if err != nil {
+		return err
+	}
+	seen := map[int64]bool{}
+	for _, id := range ids {
+		if seen[id] {
+			continue
+		}
+		seen[id] = true
+		if stamped[id] {
+			fmt.Fprintf(w, "✓ #%d checked\n", id)
+		} else {
+			fmt.Fprintf(w, "#%d is done, not checked\n", id)
 		}
 	}
 	return nil
@@ -654,8 +691,21 @@ func printInbox(w io.Writer, es []app.Entry) {
 				where += " · " + title
 			}
 		}
-		fmt.Fprintf(w, "#%-4d %-6s %s%s\n", e.ID, age(e.CreatedAt, now()), line, where)
+		fmt.Fprintf(w, "#%-4d %-6s %s%s%s\n", e.ID, age(e.CreatedAt, now()), line, where, checkedMark(e))
 	}
+}
+
+// checkedMark is the "  (checked 2d ago)" suffix for a jot that jotaside check
+// stamped, or "" for one never checked.
+func checkedMark(e app.Entry) string {
+	if e.LastCheckedAt.IsZero() {
+		return ""
+	}
+	when := age(e.LastCheckedAt, now())
+	if when != "today" {
+		when += " ago"
+	}
+	return "  (checked " + when + ")"
 }
 
 // printSession prints a session's label, a summary line, the given jots, the
@@ -737,6 +787,9 @@ func printEntry(w io.Writer, e app.Entry) {
 	field("commit", e.CommitSHA)
 	field("issue", e.IssueURL)
 	field("note", e.DoneNote)
+	if !e.LastCheckedAt.IsZero() {
+		field("checked", e.LastCheckedAt.Local().Format(time.RFC3339))
+	}
 	field("open", e.OpenURL)
 	if len(e.Metadata) > 0 {
 		field("metadata", string(e.Metadata))

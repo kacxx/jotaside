@@ -181,6 +181,8 @@ when there is none.
   transcript, or a jot from Codex, Cursor or `jotaside add`, has no title.
 - `session:` names are not shown here; they stay with `find` and `sessions`.
   `show`, `search`, `find` and `sessions` don't show the title.
+- A jot stamped by `jotaside check` ends with `(checked today)` or
+  `(checked 2d ago)`, after the location and title; see [Check](#check).
 
 ## Done
 
@@ -204,6 +206,44 @@ when there is none.
   also gets `done_at`.
 - `search` and `find` show `— note: …` on a result that matched only through
   its note.
+- `done` keeps a jot's `last_checked_at` (see [Check](#check)).
+
+## Check
+
+`jotaside check <id>...` records when open jots were last looked at and left
+open, typically after an agent's "update jot" or "update all" gave a verdict
+that keeps the jot open ("no sign yet", "partly done" kept open, or "can't
+tell"). It records when, not what was found. The inbox then shows when, and
+the skill's "update all" reads never-checked and longest-unchecked sessions
+first.
+
+```
+$ jotaside check 1 3
+✓ #1 checked
+#3 is done, not checked
+$ jotaside inbox
+#2    today  SUP-4821 needs a backend ticket
+#1    today  token cache TTL looks too long  (checked today)
+```
+
+- **Stored** in the jot's metadata as `last_checked_at`, in UTC like
+  `done_at`. A later `check` replaces it. There is no schema change.
+- **All or nothing** on missing ids, as with `done`: if any id doesn't exist,
+  the command fails naming every missing one (`no jots #99, #98`) and stamps
+  none.
+- **A done jot** is reported (`#N is done, not checked`) and left alone; the
+  command still succeeds.
+- **No flags.** The verdict stays in the chat; `check` only records the time.
+- **Shown:** the inbox line ends `(checked today)` or `(checked Nd ago)`
+  (calendar days, local time, as for the jot's age); never-checked jots show
+  nothing extra. `jotaside show` prints a `checked:` line in local time.
+- **MCP:** every tool that returns jots (`inbox`, `show`, `search`, `find`,
+  `sessions`) includes `last_checked_at` when it is set, and so does the
+  `activity` result, so an agent can tell which records are newer than the
+  last check. `check` is CLI only; the server stays read-only.
+
+Output above was produced by the `feat/26-last-checked` branch
+(kacxx/jotaside#26) on a throwaway database, not yet on a released version.
 
 ## Promote
 
