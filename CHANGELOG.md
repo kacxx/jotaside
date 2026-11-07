@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.3](https://github.com/kacxx/jotaside/compare/v0.1.2...v0.1.3) (2026-11-06)
+
+
+### Features
+
+* mark unfinished jots with a last-checked date ([#27](https://github.com/kacxx/jotaside/issues/27)) ([e081ed1](https://github.com/kacxx/jotaside/commit/e081ed1d923843c8e9747001a9b4aaed00995b69))
+
 ## [0.1.2](https://github.com/kacxx/jotaside/compare/v0.1.1...v0.1.2) (2026-11-01)
 
 
