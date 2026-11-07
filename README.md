@@ -32,16 +32,6 @@ instead.
 
 ## Install
 
-On macOS, with [Homebrew](https://brew.sh):
-
-```sh
-brew install kacxx/tap/jotaside
-jotaside setup claude    # or: jotaside setup codex
-```
-
-Homebrew puts `jotaside` on your `PATH` and clears the quarantine mark the
-unsigned binary would otherwise get (see below), so nothing else is needed.
-
 With Go 1.25+:
 
 ```sh
@@ -133,7 +123,7 @@ $ jotaside version
 jotaside v0.1.0
 ```
 
-To update, run `brew upgrade jotaside`, the same `go install …@latest` again,
+To update, run the same `go install …@latest` again,
 or `mv` the new downloaded binary over the old one at the same path (no need to
 rerun setup). Use `mv` rather than `cp`: on Apple Silicon, copying over the old
 file can get the new one killed on start. A browser download needs the `xattr`
@@ -203,8 +193,7 @@ is `jotaside promote`, which posts to GitHub through your `gh` login, after aski
 3. Remove the skill: `claude plugin uninstall jotaside@jotaside` (and
    `claude plugin marketplace remove jotaside`), or delete a copied
    `skills/jotaside` folder.
-4. Delete the binary (`jotaside paths` shows where it is), or run
-   `brew uninstall jotaside` if you installed it with Homebrew.
+4. Delete the binary (`jotaside paths` shows where it is).
 5. To delete your jots too, delete the database folder `jotaside paths` shows,
    after a `jotaside backup` if you might want them back.
 
