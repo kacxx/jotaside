@@ -62,8 +62,38 @@ func Claude(ctx context.Context, r io.Reader, w io.Writer, open app.Opener) erro
 			}
 		},
 		parse:     parsePrompt("claude", claudeMeta),
+		label:     labelFirstPrompt,
 		exitBlock: true,
 	}.run(ctx, r, w, open)
+}
+
+// headlessEntrypoint is CLAUDE_CODE_ENTRYPOINT for `claude -p` started from a
+// clean environment. Such runs get no automatic label.
+const headlessEntrypoint = "sdk-cli"
+
+// labelFirstPrompt labels a session with the work item its first prompt names
+// (#32): a done "session: <item>" jot, so it doesn't add to the inbox. It
+// checks the prompt before anything else, so a prompt without a work item
+// never reads the transcript or opens the database. It is silent: any failure
+// leaves the session unlabelled and the prompt goes through regardless.
+func labelFirstPrompt(ctx context.Context, prompt string, build func() app.CaptureRequest, open app.Opener) {
+	defer func() { _ = recover() }()
+	item, ok := app.WorkItem(prompt)
+	if !ok || os.Getenv(envEntrypoint) == headlessEntrypoint {
+		return
+	}
+	req := build()
+	path, _ := req.Metadata[store.MetaTranscriptPath].(string)
+	if req.SessionID == "" || !app.FirstPrompt(path) {
+		return
+	}
+	svc, err := open()
+	if err != nil {
+		return
+	}
+	defer svc.Close()
+	req.Text = app.SessionPrefix + " " + item
+	_, _, _ = svc.LabelSession(ctx, req)
 }
 
 // claudeMeta records the transcript path and, when well-formed, the Claude

@@ -45,7 +45,10 @@ with your next message anyway (see [cursor.md](cursor.md)).
 
 - **Ordinary prompts and malformed hook payloads fail open**: the prompt goes
   through as if jotaside weren't installed. The prefix is checked *before* SQLite is
-  opened or git is run, so a normal prompt costs one small process start.
+  opened or git is run, so a normal prompt costs one small process start. The
+  exception is a Claude Code chat's first prompt that names a work item, which
+  saves an [automatic label](#automatic-labels); if that fails, nothing is
+  shown and the prompt still goes through.
 - **A recognised jot fails safe**: it is always blocked, even if saving failed.
   On failure the message says `✗ Jot NOT saved (<reason>)` and includes your
   original text so you can copy it.
@@ -95,10 +98,47 @@ SUP-4821 token TTL investigation
   filter runs on the matching jots at query time.
 - Done jots are listed with `(done)`, as in `jotaside search`.
 - **Only chats with a jot in them are listed.** A chat where you never jotted
-  doesn't appear. Starting a ticket's chat with a `session:` jot makes it
-  findable.
+  doesn't appear, unless Claude Code labelled it from its
+  [first prompt](#automatic-labels). Starting a ticket's chat with a
+  `session:` jot makes it findable in any agent.
 - Jots from `jotaside add` have no session. `find` lists matching ones under
   "Not in a session".
+
+### Automatic labels
+
+In Claude Code, when a chat's first prompt names a work item, the hook saves a
+`session: <item>` jot for it, as if you had jotted `>> session: <item>`. The
+prompt still goes to the model, and nothing is printed. A work item is:
+
+| In the prompt | Label |
+| --- | --- |
+| a ticket key: uppercase letters and digits, a hyphen, digits, as a whole word (`SUP-4821`, `P2-14`) | `session: SUP-4821` |
+| `owner/repo#N` | `session: owner/repo#N` |
+| a GitHub issue or pull request URL, `https://github.com/owner/repo/issues/N` or `…/pull/N` | `session: owner/repo#N` |
+
+- **The first work item in the prompt** is the label. Leading
+  `<system-reminder>` blocks are skipped, as for jots.
+- **It's saved as done**, so it never adds to `jotaside inbox`. It shows in
+  `find`, `sessions` and `search`, with `(done)`.
+- **Only the first prompt.** A prompt is the first when the chat's transcript
+  doesn't exist yet or has no `user` record: Claude Code writes a prompt to
+  the transcript only after the hook lets it through (seen on Claude Code
+  2.1.321 and 2.1.322). A work item named in a
+  later prompt labels nothing. Jots don't count, since they never reach the
+  transcript.
+- **A label you jotted wins.** If the chat already has a `>> session:` jot, the
+  hook saves nothing; a `>> session:` jot after the automatic one replaces it,
+  because the newest one labels the chat.
+- **Any key-shaped word counts**, with no list of ticket prefixes, so a first
+  prompt about `SHA-256` is labelled `session: SHA-256`. Replace it with a
+  `>> session:` jot.
+- **Not for headless runs**: nothing is saved when `CLAUDE_CODE_ENTRYPOINT`
+  is `sdk-cli`, which `claude -p` sets when started from a plain shell. A
+  `claude -p` started from inside a Claude Desktop session inherits
+  `claude-desktop` instead and is labelled (seen on Claude Code 2.1.322).
+- **Claude Code only.** Codex and Cursor prompts are never labelled.
+- A prompt with no work item is checked without reading the transcript or
+  opening the database.
 
 ## Activity
 

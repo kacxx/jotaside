@@ -29,7 +29,9 @@ fact below before touching names.
 - `internal/capture/` — the `>>` rule, deliberately narrow: `>>`, spaces
   or tabs (or non-breaking spaces), then a non-space character, after any leading `<system-reminder>` blocks.
 - `internal/app/` — the service layer: capture, inbox, done, `promote.go`
-  (jot to GitHub issue via `gh`), `sessions.go` (`find` and `sessions`).
+  (jot to GitHub issue via `gh`), `sessions.go` (`find` and `sessions`),
+  `label.go` (a Claude Code chat's first prompt that names a work item saves
+  a done `session:` label, #32).
 - `internal/store/` — SQLite (pure Go, no cgo), one `entries` table, owner-only
   file permissions.
 - `internal/setup/` — `jotaside setup`: finds the binary path, quotes it, and

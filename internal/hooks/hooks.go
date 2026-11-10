@@ -2,7 +2,9 @@
 //
 // Contract:
 //   - The prefix check runs before SQLite is opened or git is run; the
-//     Service is opened lazily through an app.Opener.
+//     Service is opened lazily through an app.Opener. The Claude Code hook
+//     also opens it for a session's first prompt that names a work item, to
+//     save the session's label; that prompt still passes through silently.
 //   - Ordinary prompts and malformed payloads fail open: the prompt goes
 //     through as if the hook were not installed.
 //   - A recognised jot fails safe: it is always blocked, whether or not it was

@@ -176,7 +176,10 @@ behaviour: [docs/setup.md](docs/setup.md).
 
 The hook sees every prompt you send, but keeps only jots: prompts that start
 with `>>`, a space and some text (the [capture rule](docs/reference.md#capture-rules)
-has the details). Anything else passes through untouched and isn't stored.
+has the details). Anything else passes through untouched and isn't stored, with
+one exception: when a Claude Code chat's first prompt names a work item, such as
+`SUP-4821`, the item is saved as the chat's label (see
+[Get back to a chat](#get-back-to-a-chat)). The prompt itself isn't.
 
 For each jot, jotaside saves the text, the time, the agent and session it came
 from, the folder, the git repo, branch and commit, and the session's transcript
@@ -230,6 +233,7 @@ is `jotaside promote`, which posts to GitHub through your `gh` login, after aski
 | --- | --- |
 | `>> some thought` (in Claude Code or Codex) | Saved with the repo, branch, commit and chat; the model never sees it |
 | `>> session: SUP-4821 token TTL` | Also labels the chat, so `jotaside find` and `jotaside sessions` show why it exists |
+| `SUP-4821: fix the token TTL` as a Claude Code chat's first prompt | Goes to the model as normal, and labels the chat `session: SUP-4821` (saved as done, so it isn't in your inbox) |
 | `jotaside add some thought` (in a terminal) | Saved with the git context of the current directory |
 
 Only a prompt that **starts** with `>>`, a space and then text is a jot (extra
@@ -285,7 +289,11 @@ jotaside find SUP-4821         # chats that mention it (ticket keys match as who
 jotaside sessions              # your recent chats and their labels
 ```
 
-Only chats with a jot in them can be found, so start a ticket's chat with
+Only chats with a jot in them can be found. In Claude Code, a chat whose first
+prompt names a work item gets one automatically: a ticket key (`SUP-4821`),
+`owner/repo#N`, or a GitHub issue or pull request link, saved as
+`owner/repo#N`. The first one in the prompt is used. A label you jot yourself
+wins, so in Codex, or to label a chat that didn't start with its ticket, jot
 `>> session: SUP-4821 …`.
 
 On macOS and Windows, `jotaside open 12` opens the chat a jot came from, for jots
