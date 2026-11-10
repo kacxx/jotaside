@@ -467,3 +467,32 @@ input box, where Enter saves it again; that wasn't seen in normal use on
 **Revisit if:** duplicates with different wording still turn up in the
 database (fuzzy matching, D1), or someone needs to jot the same thing twice in
 a minute on purpose.
+
+## A Claude Code chat's first prompt labels it
+
+**Decided:** when a Claude Code chat's first prompt names a work item, the
+prompt hook saves a `session: <item>` jot, with status `done`, the chat's
+session id and source `claude`, and lets the prompt through. A work item is a
+ticket key (uppercase letters and digits, a hyphen, digits, as a whole word),
+`owner/repo#N`, or a GitHub issue or PR URL, saved as `owner/repo#N`; the
+first one in the prompt wins. A prompt is the first when the transcript is
+missing or has no `type: "user"` record. Nothing is saved for the `sdk-cli`,
+`sdk-ts` and `sdk-py` entrypoints, for a chat that already has a `session:`
+jot, or in Codex and Cursor. Settled in #32 (D1–D9, D6 revised).
+
+**Why:** a chat could be found only if someone remembered a `>> session:` jot,
+and on 2026-11-10 1 of 81 chats had one, while 46 named a work item in their
+first prompt. The hook gets no turn number, but Claude Code writes a prompt's
+`user` record only after the hook lets it through, so the transcript tells the
+first prompt apart; Codex and Cursor have no such check, which is why they are
+left out. Saving as `done` keeps labels out of the inbox, and the source stays
+`claude` because sessions are keyed by source and id. URLs are saved as
+`owner/repo#N` because `find` is a substring search. This picks keys out of
+text at capture time, which "Ticket keys are matched at query time" avoided
+for tags, but without a prefix allowlist the label doesn't depend on the
+hook's environment, and a wrong one such as `SHA-256` is replaced by any later
+`>> session:` jot.
+
+**Revisit if:** a chat you needed has no label because its work item came
+after the first prompt, or it was in Codex or Cursor (#32 D1's signal; #11
+indexes every session).

@@ -374,7 +374,7 @@ func sameJotText(a, b string) bool {
 var jsonKey = regexp.MustCompile(`^[A-Za-z0-9_]+$`)
 
 // prepare fills e's defaults (status inbox, CreatedAt now) and returns its
-// metadata as stored.
+// metadata as stored, with done_at if e is saved as done.
 func (e *Entry) prepare() string {
 	if e.Status == "" {
 		e.Status = StatusInbox
@@ -384,9 +384,31 @@ func (e *Entry) prepare() string {
 	}
 	meta := string(e.Metadata)
 	if meta == "" || meta == "null" {
-		return "{}"
+		meta = "{}"
+	}
+	if e.Status == StatusDone {
+		meta = stampDoneAt(meta, e.CreatedAt)
+		e.Metadata = json.RawMessage(meta)
 	}
 	return meta
+}
+
+// stampDoneAt adds done_at = at to an entry saved as done, as closing one
+// later does, unless meta already has it or isn't a JSON object.
+func stampDoneAt(meta string, at time.Time) string {
+	m := map[string]json.RawMessage{}
+	if json.Unmarshal([]byte(meta), &m) != nil || m == nil {
+		return meta
+	}
+	if _, ok := m[MetaDoneAt]; ok {
+		return meta
+	}
+	m[MetaDoneAt] = json.RawMessage(strconv.Quote(at.UTC().Format(timeLayout)))
+	b, err := json.Marshal(m)
+	if err != nil {
+		return meta
+	}
+	return string(b)
 }
 
 const columns = `id, text, created_at, status, source, session_id, cwd, repo_root, repo_name, branch, commit_sha, metadata`

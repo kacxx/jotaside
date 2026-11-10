@@ -625,3 +625,45 @@ func TestCheck(t *testing.T) {
 		t.Fatalf("done must keep last_checked_at: %s", e.Metadata)
 	}
 }
+
+// An entry saved as done gets done_at, as one closed later does: its created
+// time. A done_at already in its metadata is kept.
+func TestInsertDoneStampsDoneAt(t *testing.T) {
+	ctx := context.Background()
+	s, _ := openTemp(t)
+	at := time.Date(2026, 11, 10, 9, 30, 0, 0, time.UTC)
+	for _, c := range []struct {
+		name, meta, want string
+		insert           func(*Entry) error
+	}{
+		{"Insert", "", "2026-11-10T09:30:00.000Z", func(e *Entry) error { _, err := s.Insert(ctx, e); return err }},
+		{"InsertDedup", `{"transcript_path":"/t"}`, "2026-11-10T09:30:00.000Z", func(e *Entry) error { _, err := s.InsertDedup(ctx, e, Dedup{}); return err }},
+		{"kept", `{"done_at":"earlier"}`, "earlier", func(e *Entry) error { _, err := s.Insert(ctx, e); return err }},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			e := Entry{Text: "x", Status: StatusDone, CreatedAt: at, Metadata: json.RawMessage(c.meta)}
+			if err := c.insert(&e); err != nil {
+				t.Fatal(err)
+			}
+			got, err := s.Get(ctx, e.ID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var m map[string]any
+			if err := json.Unmarshal(got.Metadata, &m); err != nil || m[MetaDoneAt] != c.want {
+				t.Fatalf("metadata %s (%v), want done_at %q", got.Metadata, err, c.want)
+			}
+			if c.meta != "" && c.name != "kept" && m["transcript_path"] != "/t" {
+				t.Fatalf("other metadata lost: %s", got.Metadata)
+			}
+		})
+	}
+	// An inbox entry gets no done_at.
+	e := Entry{Text: "y"}
+	if _, err := s.Insert(ctx, &e); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := s.Get(ctx, e.ID); strings.Contains(string(got.Metadata), MetaDoneAt) {
+		t.Fatalf("inbox entry has done_at: %s", got.Metadata)
+	}
+}
