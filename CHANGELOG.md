@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.4](https://github.com/kacxx/jotaside/compare/v0.1.3...v0.1.4) (2026-11-10)
+
+
+### Features
+
+* label a Claude Code session from its first prompt's work item ([#33](https://github.com/kacxx/jotaside/issues/33)) ([e21f962](https://github.com/kacxx/jotaside/commit/e21f96299f0749a79e9d9c1dfb8b75ef9c6cb617))
+
 ## [0.1.3](https://github.com/kacxx/jotaside/compare/v0.1.2...v0.1.3) (2026-11-06)
 
 
