@@ -132,8 +132,9 @@ prompt still goes to the model, and nothing is printed. A work item is:
 - **Any key-shaped word counts**, with no list of ticket prefixes, so a first
   prompt about `SHA-256` is labelled `session: SHA-256`. Replace it with a
   `>> session:` jot.
-- **Not for headless runs**: nothing is saved when `CLAUDE_CODE_ENTRYPOINT`
-  is `sdk-cli`, which `claude -p` sets when started from a plain shell. A
+- **Not for headless or Agent SDK runs**: nothing is saved when
+  `CLAUDE_CODE_ENTRYPOINT` is `sdk-cli` (which `claude -p` sets when started
+  from a plain shell), `sdk-ts` or `sdk-py`. A
   `claude -p` started from inside a Claude Desktop session inherits
   `claude-desktop` instead and is labelled (seen on Claude Code 2.1.322).
 - **Claude Code only.** Codex and Cursor prompts are never labelled.

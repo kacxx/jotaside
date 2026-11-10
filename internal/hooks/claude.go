@@ -67,9 +67,11 @@ func Claude(ctx context.Context, r io.Reader, w io.Writer, open app.Opener) erro
 	}.run(ctx, r, w, open)
 }
 
-// headlessEntrypoint is CLAUDE_CODE_ENTRYPOINT for `claude -p` started from a
-// clean environment. Such runs get no automatic label.
-const headlessEntrypoint = "sdk-cli"
+// sdkEntrypoints are the CLAUDE_CODE_ENTRYPOINT values of headless and Agent
+// SDK runs: `claude -p` started from a clean environment (sdk-cli) and the
+// TypeScript and Python SDKs. Claude Code treats the three as one group. Such
+// runs get no automatic label (#32 D6).
+var sdkEntrypoints = map[string]bool{"sdk-cli": true, "sdk-ts": true, "sdk-py": true}
 
 // labelFirstPrompt labels a session with the work item its first prompt names
 // (#32): a done "session: <item>" jot, so it doesn't add to the inbox. It
@@ -79,7 +81,7 @@ const headlessEntrypoint = "sdk-cli"
 func labelFirstPrompt(ctx context.Context, prompt string, build func() app.CaptureRequest, open app.Opener) {
 	defer func() { _ = recover() }()
 	item, ok := app.WorkItem(prompt)
-	if !ok || os.Getenv(envEntrypoint) == headlessEntrypoint {
+	if !ok || sdkEntrypoints[os.Getenv(envEntrypoint)] {
 		return
 	}
 	req := build()

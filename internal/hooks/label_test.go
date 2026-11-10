@@ -103,12 +103,15 @@ func TestClaudeLaterPromptSavesNothing(t *testing.T) {
 }
 
 func TestClaudeNoLabel(t *testing.T) {
-	t.Run("headless sdk-cli", func(t *testing.T) {
-		t.Setenv(envEntrypoint, "sdk-cli")
-		if out, _ := runClaude(t, firstPrompt(t, "ABC-123: test"), neverOpen(t)); out != "" {
-			t.Fatalf("got %q", out)
-		}
-	})
+	// Headless and Agent SDK runs (D6, revised).
+	for _, ep := range []string{"sdk-cli", "sdk-ts", "sdk-py"} {
+		t.Run("entrypoint "+ep, func(t *testing.T) {
+			t.Setenv(envEntrypoint, ep)
+			if out, _ := runClaude(t, firstPrompt(t, "ABC-123: test"), neverOpen(t)); out != "" {
+				t.Fatalf("got %q", out)
+			}
+		})
+	}
 	t.Run("no work item", func(t *testing.T) {
 		t.Setenv(envEntrypoint, "cli")
 		if out, _ := runClaude(t, firstPrompt(t, "Refactor the session middleware"), neverOpen(t)); out != "" {

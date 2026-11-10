@@ -476,9 +476,9 @@ session id and source `claude`, and lets the prompt through. A work item is a
 ticket key (uppercase letters and digits, a hyphen, digits, as a whole word),
 `owner/repo#N`, or a GitHub issue or PR URL, saved as `owner/repo#N`; the
 first one in the prompt wins. A prompt is the first when the transcript is
-missing or has no `type: "user"` record. Nothing is saved for `sdk-cli`
-entrypoints, for a chat that already has a `session:` jot, or in Codex and
-Cursor. Settled in #32 (D1–D9).
+missing or has no `type: "user"` record. Nothing is saved for the `sdk-cli`,
+`sdk-ts` and `sdk-py` entrypoints, for a chat that already has a `session:`
+jot, or in Codex and Cursor. Settled in #32 (D1–D9, D6 revised).
 
 **Why:** a chat could be found only if someone remembered a `>> session:` jot,
 and on 2026-11-10 1 of 81 chats had one, while 46 named a work item in their
