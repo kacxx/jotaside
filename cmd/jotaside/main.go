@@ -79,6 +79,36 @@ Environment:
                                 (default 2000, capped at 10000)
 `
 
+// helpFirstArg lists the commands that print their usage for --help or -h
+// as the first argument. inbox, sessions, done, promote and setup parse
+// flags and answer --help themselves.
+var helpFirstArg = map[string]bool{
+	"find": true, "search": true, "add": true, "backup": true, "show": true,
+	"open": true, "activity": true, "check": true, "paths": true,
+}
+
+// commandUsage returns cmd's lines from usage: its "  jotaside <cmd>" line
+// and any continuation lines under it, or "" if usage has no such command.
+func commandUsage(cmd string) string {
+	var b strings.Builder
+	lines := strings.SplitAfter(usage, "\n")
+	for i, l := range lines {
+		rest, ok := strings.CutPrefix(l, "  jotaside "+cmd)
+		if !ok || (rest != "\n" && !strings.HasPrefix(rest, " ")) {
+			continue
+		}
+		b.WriteString(l)
+		for _, c := range lines[i+1:] {
+			if !strings.HasPrefix(c, "    ") {
+				break
+			}
+			b.WriteString(c)
+		}
+		break
+	}
+	return b.String()
+}
+
 func main() {
 	// If a reader closes its end, a write to stdout must fail with EPIPE rather
 	// than kill the process with SIGPIPE: hooks exit 0 (or 2 for a Claude Code
@@ -141,6 +171,14 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	cmd, args := args[0], args[1:]
 	ctx := context.Background()
+
+	// For these commands --help would otherwise be a query, an id, jot text
+	// or a path (#39). Only the first argument counts: "find foo --help"
+	// still searches for "foo --help".
+	if helpFirstArg[cmd] && len(args) > 0 && (args[0] == "--help" || args[0] == "-h") {
+		fmt.Fprint(stdout, commandUsage(cmd))
+		return nil
+	}
 
 	switch cmd {
 	case "help", "-h", "--help":

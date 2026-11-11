@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"flag"
 	"io"
 	"os"
 	"os/exec"
@@ -1069,5 +1070,113 @@ func TestCLICheck(t *testing.T) {
 		if _, err := sh(args...); err == nil {
 			t.Errorf("%v must fail", args)
 		}
+	}
+}
+
+// --help or -h as the first argument prints the command's own lines from
+// jotaside help, and runs nothing: add saves no jot, backup writes no file
+// (#39).
+func TestSubcommandHelp(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "jot.db")
+	t.Setenv("JOT_DB", db)
+	cwd := t.TempDir()
+	t.Chdir(cwd)
+
+	for _, cmd := range []string{"find", "search", "add", "backup", "show", "open", "activity", "check", "paths"} {
+		for _, f := range []string{"--help", "-h"} {
+			var out bytes.Buffer
+			if err := run([]string{cmd, f}, strings.NewReader("from stdin\n"), &out); err != nil {
+				t.Fatalf("%s %s: %v", cmd, f, err)
+			}
+			got := out.String()
+			if !strings.HasPrefix(got, "  jotaside "+cmd+" ") || !strings.HasSuffix(got, "\n") || strings.Count(got, "\n") != 1 {
+				t.Fatalf("%s %s: want its one line from jotaside help, got %q", cmd, f, got)
+			}
+			if !strings.Contains(usage, got) {
+				t.Fatalf("%s %s: %q is not in jotaside help", cmd, f, got)
+			}
+		}
+	}
+
+	var out bytes.Buffer
+	if err := run([]string{"find", "--help"}, nil, &out); err != nil {
+		t.Fatal(err)
+	}
+	if want := "  jotaside find <query...>      sessions with a jot matching the query, and how to resume them\n"; out.String() != want {
+		t.Fatalf("find --help: got %q, want %q", out.String(), want)
+	}
+
+	// Later arguments don't change it.
+	out.Reset()
+	if err := run([]string{"show", "--help", "1"}, nil, &out); err != nil || !strings.HasPrefix(out.String(), "  jotaside show ") {
+		t.Fatalf("show --help 1: %q %v", out.String(), err)
+	}
+
+	// Nothing was written: no file in the working directory (backup), and
+	// no jot in the database (add).
+	ents, err := os.ReadDir(cwd)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ents) != 0 {
+		t.Fatalf("files written to the working directory: %v", ents)
+	}
+	out.Reset()
+	if err := run([]string{"inbox"}, nil, &out); err != nil || out.String() != "Inbox is empty.\n" {
+		t.Fatalf("inbox after add --help: %q %v", out.String(), err)
+	}
+}
+
+// --help later in the arguments is part of the query (#39 D4).
+func TestHelpLaterIsQuery(t *testing.T) {
+	t.Setenv("JOT_DB", filepath.Join(t.TempDir(), "jot.db"))
+	for _, cmd := range []string{"find", "search"} {
+		var out bytes.Buffer
+		if err := run([]string{cmd, "foo", "--help"}, nil, &out); err != nil {
+			t.Fatal(err)
+		}
+		if want := "No jots match \"foo --help\".\n"; out.String() != want {
+			t.Fatalf("%s foo --help: got %q, want %q", cmd, out.String(), want)
+		}
+	}
+	if err := run([]string{"add", "foo", "--help", "bar"}, nil, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	var out bytes.Buffer
+	if err := run([]string{"find", "foo", "--help"}, nil, &out); err != nil || !strings.Contains(out.String(), "#1") {
+		t.Fatalf("find foo --help: %q %v", out.String(), err)
+	}
+}
+
+// inbox, sessions, done, promote and setup keep their own --help: Go's flag
+// usage and an error (#39 D3).
+func TestFlagCommandsHelpUnchanged(t *testing.T) {
+	t.Setenv("JOT_DB", filepath.Join(t.TempDir(), "jot.db"))
+	for _, cmd := range []string{"inbox", "sessions", "done", "promote", "setup"} {
+		for _, f := range []string{"--help", "-h"} {
+			var out bytes.Buffer
+			err := run([]string{cmd, f}, nil, &out)
+			if !errors.Is(err, flag.ErrHelp) {
+				t.Fatalf("%s %s: want flag.ErrHelp, got %v", cmd, f, err)
+			}
+			if out.Len() != 0 {
+				t.Fatalf("%s %s: stdout %q", cmd, f, out.String())
+			}
+		}
+	}
+}
+
+func TestCommandUsage(t *testing.T) {
+	if got, want := commandUsage("show"), "  jotaside show <id>            show one jot with its context\n"; got != want {
+		t.Fatalf("show: got %q, want %q", got, want)
+	}
+	// A command's continuation lines come with it.
+	got := commandUsage("promote")
+	if !strings.HasPrefix(got, "  jotaside promote <id>") || !strings.HasSuffix(got, "turn a jot into a GitHub issue with the gh CLI\n") || strings.Count(got, "\n") != 2 {
+		t.Fatalf("promote: %q", got)
+	}
+	// A name that only prefixes a command matches nothing.
+	if got := commandUsage("set"); got != "" {
+		t.Fatalf("set: %q", got)
 	}
 }
