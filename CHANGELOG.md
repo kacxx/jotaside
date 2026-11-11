@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.5](https://github.com/kacxx/jotaside/compare/v0.1.4...v0.1.5) (2026-11-11)
+
+
+### Features
+
+* label Cursor chats from the first prompt that names a work item ([#37](https://github.com/kacxx/jotaside/issues/37)) ([624aed8](https://github.com/kacxx/jotaside/commit/624aed8070550ee4251459a5529081f51745b73b))
+
 ## [0.1.4](https://github.com/kacxx/jotaside/compare/v0.1.3...v0.1.4) (2026-11-10)
 
 
