@@ -1,0 +1,224 @@
+package worklog
+
+import (
+	"bytes"
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"github.com/kacxx/jotaside/internal/app"
+)
+
+const usage = `worklog links a markdown worklog's items to the sessions that wrote them.
+
+Usage:
+  worklog add <workstream> <text>   add an open item and commit it
+  worklog close <item or key>       mark the one matching open item done and commit it
+  worklog show <item or key>        the matching items, each with its sessions
+  worklog brief                     every open item with its sessions
+
+add and close stamp the item with the calling session's ID (chat:<first 8>),
+read from CLAUDE_CODE_SESSION_ID, so run them from the session doing the
+work. They refuse to write if the log's git repo has a remote.
+
+A session is found from the stamp on the item, then from jotaside's find for
+each work item the line names. Each is printed with a command that resumes it.
+
+Environment:
+  WORKLOG_FILE        the log (default: ~/worklog/ledger.md)
+  CLAUDE_CONFIG_DIR   Claude Code's folder, for transcripts (default: ~/.claude)
+  JOT_DB              jotaside's database, for the key fallback
+`
+
+// Env is what a command reads from its surroundings; tests replace it.
+type Env struct {
+	Getenv func(string) string
+	Home   string
+	// Find is jotaside's find; nil when its database isn't there.
+	Find func(ctx context.Context, q string) ([]app.Session, []app.Entry, error)
+}
+
+// Run runs one worklog command and returns its exit code.
+func Run(ctx context.Context, args []string, env Env, stdout, stderr io.Writer) int {
+	if len(args) == 0 || args[0] == "help" || args[0] == "-h" || args[0] == "--help" {
+		fmt.Fprint(stdout, usage)
+		return 0
+	}
+	if err := run(ctx, args[0], args[1:], env, stdout, stderr); err != nil {
+		fmt.Fprintln(stderr, "worklog:", err)
+		return 1
+	}
+	return 0
+}
+
+func run(ctx context.Context, cmd string, args []string, env Env, stdout, stderr io.Writer) error {
+	file := env.Getenv("WORKLOG_FILE")
+	if file == "" {
+		file = filepath.Join(env.Home, "worklog", "ledger.md")
+	}
+	claude := env.Getenv("CLAUDE_CONFIG_DIR")
+	if claude == "" {
+		claude = filepath.Join(env.Home, ".claude")
+	}
+	look := Lookup{Transcripts: filepath.Join(claude, "projects"), Find: env.Find}
+	session := env.Getenv("CLAUDE_CODE_SESSION_ID")
+
+	switch cmd {
+	case "add":
+		if len(args) < 2 {
+			return errors.New("usage: worklog add <workstream> <text>")
+		}
+		text := strings.Join(args[1:], " ")
+		return write(file, session, stderr, "add: "+text, func(content string) (string, string, error) {
+			out, err := Add(content, args[0], text, session)
+			return out, "Added to " + args[0] + ".", err
+		}, stdout)
+	case "close":
+		if len(args) == 0 {
+			return errors.New("usage: worklog close <item or key>")
+		}
+		q := strings.Join(args, " ")
+		return write(file, session, stderr, "close: "+q, func(content string) (string, string, error) {
+			out, it, err := Close(content, q, session)
+			return out, "Closed: " + it.Text, err
+		}, stdout)
+	case "show":
+		if len(args) == 0 {
+			return errors.New("usage: worklog show <item or key>")
+		}
+		q := strings.Join(args, " ")
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return err
+		}
+		items := Find(string(content), q)
+		if len(items) == 0 {
+			fmt.Fprintf(stdout, "No item matches %q.\n", q)
+			return nil
+		}
+		printItems(ctx, stdout, look, items)
+		return nil
+	case "brief":
+		content, err := os.ReadFile(file)
+		if err != nil {
+			return err
+		}
+		var open []Item
+		for _, it := range Items(string(content)) {
+			if it.Open {
+				open = append(open, it)
+			}
+		}
+		if len(open) == 0 {
+			fmt.Fprintln(stdout, "No open items.")
+			return nil
+		}
+		printItems(ctx, stdout, look, open)
+		return nil
+	default:
+		return fmt.Errorf("unknown command %q; run worklog help", cmd)
+	}
+}
+
+// printItems prints items under their workstreams, each with its sessions.
+func printItems(ctx context.Context, w io.Writer, look Lookup, items []Item) {
+	ws := "\x00"
+	for _, it := range items {
+		if it.Workstream != ws {
+			if ws != "\x00" {
+				fmt.Fprintln(w)
+			}
+			ws = it.Workstream
+			if ws != "" {
+				fmt.Fprintln(w, ws)
+			}
+		}
+		mark := "[ ]"
+		if !it.Open {
+			mark = "[x]"
+		}
+		fmt.Fprintf(w, "  %s %s\n", mark, it.Text)
+		refs := look.For(ctx, it)
+		if len(refs) == 0 {
+			fmt.Fprintln(w, "      no session found")
+		}
+		for _, r := range refs {
+			switch {
+			case r.ID == "":
+				fmt.Fprintf(w, "      %s: transcript not found (removed, or on another machine)\n", r.Via)
+			case r.Resume == "":
+				fmt.Fprintf(w, "      %s: session %s, no resume command\n", r.Via, r.ID)
+			case r.Label != "":
+				fmt.Fprintf(w, "      %s (%s): %s\n", r.Via, r.Label, r.Resume)
+			default:
+				fmt.Fprintf(w, "      %s: %s\n", r.Via, r.Resume)
+			}
+		}
+	}
+}
+
+// write applies edit to the log and commits it. The log must be in a git
+// repo with no remote and have no uncommitted changes of its own; if the
+// commit fails, the log is put back as it was.
+func write(file, session string, stderr io.Writer, msg string, edit func(string) (string, string, error), stdout io.Writer) error {
+	dir := filepath.Dir(file)
+	if _, err := git(dir, "rev-parse", "--git-dir"); err != nil {
+		return fmt.Errorf("%s isn't in a git repo, so nothing was written", file)
+	}
+	remotes, err := git(dir, "remote")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(remotes) != "" {
+		return fmt.Errorf("the log's git repo has a remote (%s), so nothing was written: the log stays local", strings.Join(strings.Fields(remotes), ", "))
+	}
+	dirty, err := git(dir, "status", "--porcelain", "--", filepath.Base(file))
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(dirty) != "" {
+		return fmt.Errorf("%s has uncommitted changes, so nothing was written: commit or discard them first", file)
+	}
+	info, err := os.Stat(file)
+	if err != nil {
+		return err
+	}
+	before, err := os.ReadFile(file)
+	if err != nil {
+		return err
+	}
+	after, done, err := edit(string(before))
+	if err != nil {
+		return err
+	}
+	if err := os.WriteFile(file, []byte(after), info.Mode().Perm()); err != nil {
+		return err
+	}
+	if _, err := git(dir, "commit", "-q", "-m", "worklog "+msg, "--", filepath.Base(file)); err != nil {
+		if werr := os.WriteFile(file, before, info.Mode().Perm()); werr != nil {
+			return fmt.Errorf("commit failed (%v) and the log couldn't be put back: %v", err, werr)
+		}
+		return fmt.Errorf("commit failed, so the log was put back as it was: %v", err)
+	}
+	fmt.Fprintln(stdout, done)
+	if stampToken(session) == "" {
+		fmt.Fprintln(stderr, "worklog: no session ID in CLAUDE_CODE_SESSION_ID, so the item carries no chat: stamp")
+	}
+	return nil
+}
+
+// git runs git in dir and returns its output.
+func git(dir string, args ...string) (string, error) {
+	cmd := exec.Command("git", append([]string{"-C", dir}, args...)...)
+	var out, errb bytes.Buffer
+	cmd.Stdout, cmd.Stderr = &out, &errb
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("git %s: %s", args[0], strings.TrimSpace(errb.String()+" "+err.Error()))
+	}
+	return out.String(), nil
+}
