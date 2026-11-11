@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.6](https://github.com/kacxx/jotaside/compare/v0.1.5...v0.1.6) (2026-11-11)
+
+
+### Bug Fixes
+
+* print a command's usage for --help instead of running it ([#40](https://github.com/kacxx/jotaside/issues/40)) ([f8a6c17](https://github.com/kacxx/jotaside/commit/f8a6c178dbd5e6eec6ff1e8c734421f0ba639d60))
+
 ## [0.1.5](https://github.com/kacxx/jotaside/compare/v0.1.4...v0.1.5) (2026-11-11)
 
 
