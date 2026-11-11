@@ -20,8 +20,9 @@ type Entry = store.Entry
 var ErrNotFound = store.ErrNotFound
 
 // Opener lazily opens a Service. Hooks call it only once a prompt is known to
-// be a jot, or a session's first prompt that names a work item, so ordinary
-// prompts never touch SQLite or git.
+// be a jot, or names a work item that may label its session (a Claude Code
+// session's first prompt, or a Cursor chat's), so ordinary prompts never touch
+// SQLite or git.
 type Opener func() (*Service, error)
 
 // Service implements jot's use cases.

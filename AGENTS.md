@@ -31,7 +31,8 @@ fact below before touching names.
 - `internal/app/` — the service layer: capture, inbox, done, `promote.go`
   (jot to GitHub issue via `gh`), `sessions.go` (`find` and `sessions`),
   `label.go` (a Claude Code chat's first prompt that names a work item saves
-  a done `session:` label, #32).
+  a done `session:` label, #32; in Cursor, the first prompt that names one,
+  #36).
 - `internal/store/` — SQLite (pure Go, no cgo), one `entries` table, owner-only
   file permissions.
 - `internal/setup/` — `jotaside setup`: finds the binary path, quotes it, and

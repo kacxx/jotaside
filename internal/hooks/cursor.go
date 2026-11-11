@@ -32,6 +32,28 @@ var cursorHook = promptHook{
 		return CursorOutput{Continue: false, UserMessage: reason}
 	},
 	parse: parseCursor,
+	label: labelChat,
+}
+
+// labelChat labels a Cursor chat with the work item a prompt names (#36): a
+// done "session: <item>" jot, as the Claude Code hook saves. Cursor sends no
+// transcript, so there is no first-prompt test: the first prompt that names a
+// work item labels a chat with no label yet (D2). The request's OnceKey (the
+// generation id) saves one label when both `jotaside hook cursor` and the
+// imported `jotaside hook claude` see the prompt (D3). A prompt without a work
+// item never opens the database, and any failure leaves the chat unlabelled:
+// the reply stays {"continue":true}.
+func labelChat(ctx context.Context, prompt string, build func() app.CaptureRequest, open app.Opener) {
+	defer func() { _ = recover() }()
+	item, ok := app.WorkItem(prompt)
+	if !ok {
+		return
+	}
+	req := build()
+	if req.SessionID == "" {
+		return
+	}
+	saveLabel(ctx, req, item, open)
 }
 
 // Cursor handles a Cursor beforeSubmitPrompt hook.
