@@ -28,6 +28,7 @@ func mainCode() int {
 			if svc, err := app.Open(path, app.BusyTimeout()); err == nil {
 				defer svc.Close()
 				env.Find = svc.Find
+				env.Sessions = func(ctx context.Context) ([]app.Session, error) { return svc.Sessions(ctx, 0) }
 			}
 		}
 	}

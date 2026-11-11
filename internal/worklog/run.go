@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/kacxx/jotaside/internal/app"
 )
@@ -22,25 +23,38 @@ Usage:
   worklog show <item or key>        the matching items, each with its sessions
   worklog brief                     every open item with its sessions
 
-add and close stamp the item with the calling session's ID (chat:<first 8>),
-read from CLAUDE_CODE_SESSION_ID, so run them from the session doing the
-work. They refuse to write if the log's git repo has a remote.
+The log's grammar is in docs/worklog.md. A workstream is named by its id, or
+by its title or part of either. An item's facts follow " — ":
+
+  worklog add outage-followup "Write the retro — due 2026-09-02 · ABC-1290"
+  worklog add outage-followup "Guard on runtime processing — @alex · ABC-1290"
+
+add writes the owner (me, or the person with since <today>). close writes
+done <today>, drops me and the due date, and keeps the rest. Both add the
+calling session's stamp (chat:<first 8 of its ID>) as one more fact, so run
+them from the session doing the work, and both refuse to write if the log's
+git repo has a remote.
 
 A session is found from the stamp on the item, then from jotaside's find for
 each work item the line names. Each is printed with a command that resumes it.
 
 Environment:
-  WORKLOG_FILE        the log (default: ~/worklog/ledger.md)
-  CLAUDE_CONFIG_DIR   Claude Code's folder, for transcripts (default: ~/.claude)
-  JOT_DB              jotaside's database, for the key fallback
+  WORKLOG_LEDGER            the log (default: ~/worklog/ledger.md)
+  CLAUDE_CODE_SESSION_ID    the calling session's ID, set by Claude Code
+  CURSOR_CONVERSATION_ID    the same in Cursor, used when the first isn't set
+  CLAUDE_CONFIG_DIR         Claude Code's folder, for transcripts (default: ~/.claude)
+  JOT_DB                    jotaside's database, for the key fallback
 `
 
 // Env is what a command reads from its surroundings; tests replace it.
 type Env struct {
 	Getenv func(string) string
 	Home   string
-	// Find is jotaside's find; nil when its database isn't there.
-	Find func(ctx context.Context, q string) ([]app.Session, []app.Entry, error)
+	// Now is the clock, for the dates add and close write; nil means time.Now.
+	Now func() time.Time
+	// Find and Sessions are jotaside's; nil when its database isn't there.
+	Find     func(ctx context.Context, q string) ([]app.Session, []app.Entry, error)
+	Sessions func(ctx context.Context) ([]app.Session, error)
 }
 
 // Run runs one worklog command and returns its exit code.
@@ -57,7 +71,7 @@ func Run(ctx context.Context, args []string, env Env, stdout, stderr io.Writer) 
 }
 
 func run(ctx context.Context, cmd string, args []string, env Env, stdout, stderr io.Writer) error {
-	file := env.Getenv("WORKLOG_FILE")
+	file := env.Getenv("WORKLOG_LEDGER")
 	if file == "" {
 		file = filepath.Join(env.Home, "worklog", "ledger.md")
 	}
@@ -65,8 +79,16 @@ func run(ctx context.Context, cmd string, args []string, env Env, stdout, stderr
 	if claude == "" {
 		claude = filepath.Join(env.Home, ".claude")
 	}
-	look := Lookup{Transcripts: filepath.Join(claude, "projects"), Find: env.Find}
+	look := &Lookup{Transcripts: filepath.Join(claude, "projects"), Find: env.Find, Sessions: env.Sessions}
 	session := env.Getenv("CLAUDE_CODE_SESSION_ID")
+	if stampFact(session) == "" {
+		session = env.Getenv("CURSOR_CONVERSATION_ID")
+	}
+	now := time.Now
+	if env.Now != nil {
+		now = env.Now
+	}
+	today := now().Format("2006-01-02")
 
 	switch cmd {
 	case "add":
@@ -75,7 +97,7 @@ func run(ctx context.Context, cmd string, args []string, env Env, stdout, stderr
 		}
 		text := strings.Join(args[1:], " ")
 		return write(file, session, stderr, "add: "+text, func(content string) (string, string, error) {
-			out, err := Add(content, args[0], text, session)
+			out, err := Add(content, args[0], text, session, today)
 			return out, "Added to " + args[0] + ".", err
 		}, stdout)
 	case "close":
@@ -84,7 +106,7 @@ func run(ctx context.Context, cmd string, args []string, env Env, stdout, stderr
 		}
 		q := strings.Join(args, " ")
 		return write(file, session, stderr, "close: "+q, func(content string) (string, string, error) {
-			out, it, err := Close(content, q, session)
+			out, it, err := Close(content, q, session, today)
 			return out, "Closed: " + it.Text, err
 		}, stdout)
 	case "show":
@@ -126,14 +148,15 @@ func run(ctx context.Context, cmd string, args []string, env Env, stdout, stderr
 }
 
 // printItems prints items under their workstreams, each with its sessions.
-func printItems(ctx context.Context, w io.Writer, look Lookup, items []Item) {
+func printItems(ctx context.Context, w io.Writer, look *Lookup, items []Item) {
 	ws := "\x00"
 	for _, it := range items {
-		if it.Workstream != ws {
+		name := workstream{title: it.Workstream, id: it.WorkstreamID}.name()
+		if name != ws {
 			if ws != "\x00" {
 				fmt.Fprintln(w)
 			}
-			ws = it.Workstream
+			ws = name
 			if ws != "" {
 				fmt.Fprintln(w, ws)
 			}
@@ -143,6 +166,9 @@ func printItems(ctx context.Context, w io.Writer, look Lookup, items []Item) {
 			mark = "[x]"
 		}
 		fmt.Fprintf(w, "  %s %s\n", mark, it.Text)
+		if p := it.Problem(); p != "" {
+			fmt.Fprintf(w, "      line %d doesn't parse: %s\n", it.Line+1, p)
+		}
 		refs := look.For(ctx, it)
 		if len(refs) == 0 {
 			fmt.Fprintln(w, "      no session found")
@@ -150,7 +176,9 @@ func printItems(ctx context.Context, w io.Writer, look Lookup, items []Item) {
 		for _, r := range refs {
 			switch {
 			case r.ID == "":
-				fmt.Fprintf(w, "      %s: transcript not found (removed, or on another machine)\n", r.Via)
+				fmt.Fprintf(w, "      %s: session not found (removed, or on another machine)\n", r.Via)
+			case r.Resume == "" && r.Label != "":
+				fmt.Fprintf(w, "      %s (%s): session %s, no resume command\n", r.Via, r.Label, r.ID)
 			case r.Resume == "":
 				fmt.Fprintf(w, "      %s: session %s, no resume command\n", r.Via, r.ID)
 			case r.Label != "":
@@ -206,8 +234,8 @@ func write(file, session string, stderr io.Writer, msg string, edit func(string)
 		return fmt.Errorf("commit failed, so the log was put back as it was: %w", err)
 	}
 	fmt.Fprintln(stdout, done)
-	if stampToken(session) == "" {
-		fmt.Fprintln(stderr, "worklog: no session ID in CLAUDE_CODE_SESSION_ID, so the item carries no chat: stamp")
+	if stampFact(session) == "" {
+		fmt.Fprintln(stderr, "worklog: no session ID in CLAUDE_CODE_SESSION_ID or CURSOR_CONVERSATION_ID, so the item carries no chat: stamp")
 	}
 	return nil
 }
