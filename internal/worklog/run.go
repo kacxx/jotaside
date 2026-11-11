@@ -201,9 +201,9 @@ func write(file, session string, stderr io.Writer, msg string, edit func(string)
 	}
 	if _, err := git(dir, "commit", "-q", "-m", "worklog "+msg, "--", filepath.Base(file)); err != nil {
 		if werr := os.WriteFile(file, before, info.Mode().Perm()); werr != nil {
-			return fmt.Errorf("commit failed (%v) and the log couldn't be put back: %v", err, werr)
+			return fmt.Errorf("commit failed (%w) and the log couldn't be put back: %w", err, werr)
 		}
-		return fmt.Errorf("commit failed, so the log was put back as it was: %v", err)
+		return fmt.Errorf("commit failed, so the log was put back as it was: %w", err)
 	}
 	fmt.Fprintln(stdout, done)
 	if stampToken(session) == "" {
