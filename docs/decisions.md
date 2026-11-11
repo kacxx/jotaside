@@ -520,7 +520,8 @@ saved while the prompt passes through, and the reply stays
 
 **Cost:** a Cursor chat whose first prompts are about something else is
 labelled by the first one that names a work item, which may not be the chat's
-own; a `>> session:` jot replaces it.
+own. A `>> session:` jot replaces it, but in Cursor that jot hits the
+blocked-prompt bug, so it needs Cursor's edit-and-resend workaround.
 
 **Revisit if:** Cursor chats are labelled with the wrong item often enough to
 matter, or Cursor starts sending a transcript.

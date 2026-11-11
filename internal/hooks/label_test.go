@@ -247,8 +247,15 @@ func TestCursorBothHooksSaveOneLabel(t *testing.T) {
 	})
 	t.Run("at once", func(t *testing.T) {
 		// Cursor runs the two hooks side by side: both may find no label yet,
-		// and the generation id saves it once.
-		open, path := tempDB(t)
+		// and the generation id saves it once. Labelling drops errors, so a
+		// long busy timeout keeps a slow runner from losing every label.
+		path := filepath.Join(t.TempDir(), "jot.db")
+		open := func() (*app.Service, error) { return app.Open(path, 30*time.Second) }
+		svc, err := open() // create the database before the race
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = svc.Close()
 		payload := cursorPrompt(t, "SUP-1: fix the export", "gen-1")
 		var wg sync.WaitGroup
 		outs := make([]string, 8)

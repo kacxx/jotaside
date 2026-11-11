@@ -138,7 +138,11 @@ item is:
   installed, Cursor runs both on one prompt, and the label is saved once,
   keyed on Cursor's `generation_id`. Cursor chats get labels even though `>>`
   jots in Cursor are [not supported](cursor.md): a label is saved while the
-  prompt passes through, so Cursor's blocked-prompt bug doesn't touch it.
+  prompt passes through, so Cursor's blocked-prompt bug doesn't touch it. A
+  `>> session:` jot to replace a wrong label does hit the bug; see
+  [cursor.md](cursor.md) for Cursor's edit-and-resend workaround. Checked by
+  replaying recorded Cursor payloads through both hooks; not yet checked in a
+  live Cursor chat.
 - **A label you jotted wins.** If the chat already has a `>> session:` jot, the
   hook saves nothing; a `>> session:` jot after the automatic one replaces it,
   because the newest one labels the chat.
