@@ -5,12 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -1082,15 +1086,6 @@ func (r *readSpy) Read([]byte) (int, error) { r.read = true; return 0, io.EOF }
 // in jotaside help, on stdout with exit 0, before it runs or the database
 // opens (#39).
 func TestCommandHelp(t *testing.T) {
-	all := []string{"add", "inbox", "show", "activity", "open", "search", "find", "sessions",
-		"done", "check", "promote", "backup", "paths", "setup", "hook", "mcp", "version"}
-	var names []string
-	for _, c := range commands {
-		names = append(names, c.name)
-	}
-	if strings.Join(names, " ") != strings.Join(all, " ") {
-		t.Fatalf("commands table %v, want %v: a new command needs a usage entry", names, all)
-	}
 	var help bytes.Buffer
 	if code := mainCode([]string{"help"}, nil, &help, io.Discard); code != 0 {
 		t.Fatalf("help: exit %d", code)
@@ -1188,5 +1183,68 @@ func TestHelpLaterIsData(t *testing.T) {
 	out.Reset()
 	if err := run([]string{"find", "foo", "--help"}, nil, &out); err != nil || !strings.Contains(out.String(), "#1") {
 		t.Fatalf("find foo --help: %q %v", out.String(), err)
+	}
+}
+
+// Every command the CLI dispatches has an entry in the commands table, so
+// --help never runs one (#39). The commands are read from the source: the
+// case labels of each "switch cmd" in run(), plus hook, which mainCode sends
+// to runHook. A new case without a table entry fails here.
+func TestCommandsTableMatchesDispatch(t *testing.T) {
+	f, err := parser.ParseFile(token.NewFileSet(), "main.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Aliases of help and version, not commands of their own.
+	aliases := map[string]bool{"help": true, "-h": true, "--help": true, "--version": true}
+	dispatched := map[string]bool{"hook": true}
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "run" {
+			continue
+		}
+		ast.Inspect(fn, func(n ast.Node) bool {
+			sw, ok := n.(*ast.SwitchStmt)
+			if !ok {
+				return true
+			}
+			if id, ok := sw.Tag.(*ast.Ident); !ok || id.Name != "cmd" {
+				return true
+			}
+			for _, st := range sw.Body.List {
+				for _, e := range st.(*ast.CaseClause).List {
+					lit, ok := e.(*ast.BasicLit)
+					if !ok || lit.Kind != token.STRING {
+						t.Fatalf("case %T in run's switch: want a string literal", e)
+					}
+					name, err := strconv.Unquote(lit.Value)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !aliases[name] {
+						dispatched[name] = true
+					}
+				}
+			}
+			return true
+		})
+	}
+	if len(dispatched) < 10 {
+		t.Fatalf("found only %v in run(): has the dispatch moved?", dispatched)
+	}
+	inTable := map[string]bool{}
+	for _, c := range commands {
+		if inTable[c.name] {
+			t.Fatalf("%s is in the commands table twice", c.name)
+		}
+		inTable[c.name] = true
+		if !dispatched[c.name] {
+			t.Errorf("%s is in the commands table but run() doesn't dispatch it", c.name)
+		}
+	}
+	for name := range dispatched {
+		if !inTable[name] {
+			t.Errorf("run() dispatches %q but the commands table has no entry for it, so --help would run it", name)
+		}
 	}
 }
