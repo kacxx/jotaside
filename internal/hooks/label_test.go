@@ -235,6 +235,26 @@ func TestCursorLabelsFromFirstPromptNamingAnItem(t *testing.T) {
 	assertLabel(t, path, "session: example/webapp#7")
 }
 
+func TestCursorPlainJotFirstStillLabels(t *testing.T) {
+	// The common Cursor pattern: jot first, then ask about a ticket. Only a
+	// session: jot with a name stops the label.
+	open, path := tempDB(t)
+	_, o := runCursor(t, fixture(t, "cursor", "capture_single_root", map[string]any{
+		"workspace_roots": []string{t.TempDir()}}), open)
+	if o.Continue {
+		t.Fatalf("a jot must be blocked: %+v", o)
+	}
+	out, _ := runCursor(t, cursorPrompt(t, "SUP-1: fix the export", "gen-2"), open)
+	assertCursorPass(t, out)
+	es := allEntries(t, path)
+	if len(es) != 2 {
+		t.Fatalf("got %d entries, want the jot and the label: %+v", len(es), es)
+	}
+	if l := es[1]; l.Text != "session: SUP-1" || l.Status != store.StatusDone || l.Source != "cursor" || l.SessionID != cursorChat {
+		t.Fatalf("label entry: %+v", l)
+	}
+}
+
 func TestCursorBothHooksSaveOneLabel(t *testing.T) {
 	t.Run("in turn", func(t *testing.T) {
 		open, path := tempDB(t)

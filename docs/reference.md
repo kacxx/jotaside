@@ -139,16 +139,17 @@ item is:
   keyed on Cursor's `generation_id`. Cursor chats get labels even though `>>`
   jots in Cursor are [not supported](cursor.md): a label is saved while the
   prompt passes through, so Cursor's blocked-prompt bug doesn't touch it. A
-  `>> session:` jot to replace a wrong label does hit the bug; see
+  `>> session:` jot to rename the chat does hit the bug; see
   [cursor.md](cursor.md) for Cursor's edit-and-resend workaround. Checked by
   replaying recorded Cursor payloads through both hooks; not yet checked in a
   live Cursor chat.
 - **A label you jotted wins.** If the chat already has a `>> session:` jot, the
-  hook saves nothing; a `>> session:` jot after the automatic one replaces it,
-  because the newest one labels the chat.
+  hook saves nothing; a `>> session:` jot after the automatic one becomes the
+  chat's name, because the newest one labels the chat. The automatic label jot
+  stays, so its item still finds the chat in `jotaside find`.
 - **Any key-shaped word counts**, with no list of ticket prefixes, so a first
-  prompt about `SHA-256` is labelled `session: SHA-256`. Replace it with a
-  `>> session:` jot.
+  prompt about `SHA-256` is labelled `session: SHA-256`. A `>> session:` jot
+  renames the chat, but `jotaside find SHA-256` still lists it.
 - **Not for headless or Agent SDK runs**: nothing is saved when
   `CLAUDE_CODE_ENTRYPOINT` is `sdk-cli` (which `claude -p` sets when started
   from a plain shell), `sdk-ts` or `sdk-py`. A
