@@ -20,6 +20,13 @@
 >
 > `jotaside hook cursor` stays in the binary, and the setup and test notes below
 > are kept for when Cursor fixes the bug.
+>
+> **Session labels do work in Cursor.** With a hook installed, the first prompt
+> in a chat that names a work item, such as `SUP-1: fix the export`, labels the
+> chat `session: SUP-1`, so `jotaside find SUP-1` lists it. The label is saved
+> while the prompt passes through, so the bug above doesn't affect it. See
+> [automatic labels](reference.md#automatic-labels). Tested with recorded
+> Cursor payloads; not yet checked in a live Cursor chat.
 
 Add to `~/.cursor/hooks.json` (or `<project>/.cursor/hooks.json`):
 
@@ -51,8 +58,8 @@ Cursor doesn't show the confirmation twice. After any change, type `>> test`
 and check you get `✓ Jotted #N` rather than a model reply.
 
 On a jot the hook returns `{"continue":false,"user_message":"✓ Jotted #N"}`.
-Every other prompt gets `{"continue":true}`. The conversation id is stored as
-the session. With a single workspace root, that root is used as the working
+Every other prompt gets `{"continue":true}`, including one that labels the
+chat. The conversation id is stored as the session. With a single workspace root, that root is used as the working
 directory. With several roots, jotaside doesn't guess: it records all of them in
 the entry's metadata and leaves the git fields empty. A multi-root window is a
 normal Cursor layout, and every jot captured there has no repo, branch, or

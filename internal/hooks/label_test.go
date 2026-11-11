@@ -1,9 +1,12 @@
 package hooks
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -157,17 +160,176 @@ func TestClaudeNoLabel(t *testing.T) {
 	})
 }
 
-func TestCodexAndCursorNeverLabel(t *testing.T) {
+func TestCodexNeverLabels(t *testing.T) {
 	t.Setenv(envEntrypoint, "cli")
 	if out, _ := runCodex(t, fixture(t, "codex", "normal", map[string]any{
 		"prompt": "ABC-123: test", "transcript_path": filepath.Join(t.TempDir(), "missing.jsonl")}), neverOpen(t)); out != "" {
 		t.Fatalf("codex: got %q", out)
 	}
-	if _, o := runCursor(t, fixture(t, "cursor", "normal", map[string]any{"prompt": "ABC-123: test"}), neverOpen(t)); !o.Continue {
-		t.Fatal("cursor: should continue")
+}
+
+const cursorChat = "e5b0a1c7-3d2f-4c8e-9a14-7f6d2b0c8e31" // the cursor fixtures' conversation_id
+
+// cursorPrompt is a Cursor beforeSubmitPrompt payload for one prompt of the
+// fixtures' chat; each prompt has its own generation id.
+func cursorPrompt(t *testing.T, prompt, generation string) []byte {
+	t.Helper()
+	return fixture(t, "cursor", "normal", map[string]any{
+		"prompt": prompt, "generation_id": generation, "workspace_roots": []string{t.TempDir()}})
+}
+
+// assertCursorPass checks a reply is exactly Cursor's pass-through.
+func assertCursorPass(t *testing.T, out string) {
+	t.Helper()
+	if strings.TrimSpace(out) != `{"continue":true}` {
+		t.Fatalf("pass-through must be {\"continue\":true} and nothing else, got %q", out)
 	}
-	// Cursor's prompt event sent to the Claude Code hook is handled as Cursor.
-	if _, o := runClaudeAsCursor(t, fixture(t, "cursor", "normal", map[string]any{"prompt": "ABC-123: test"}), neverOpen(t)); !o.Continue {
-		t.Fatal("cursor via claude hook: should continue")
+}
+
+// assertLabel checks the database holds just one entry, the chat's done label.
+func assertLabel(t *testing.T, path, want string) {
+	t.Helper()
+	es := allEntries(t, path)
+	if len(es) != 1 {
+		t.Fatalf("got %d entries, want 1: %+v", len(es), es)
 	}
+	if e := es[0]; e.Text != want || e.Status != store.StatusDone || e.Source != "cursor" || e.SessionID != cursorChat {
+		t.Fatalf("label entry: %+v", e)
+	}
+}
+
+func TestCursorLabelsChat(t *testing.T) {
+	hooks := map[string]func(*testing.T, []byte, app.Opener) (string, CursorOutput){
+		"hook cursor": runCursor,
+		"hook claude": runClaudeAsCursor,
+	}
+	for name, run := range hooks {
+		t.Run(name, func(t *testing.T) {
+			open, path := tempDB(t)
+			out, _ := run(t, cursorPrompt(t, "SUP-1: fix the export", "gen-1"), open)
+			assertCursorPass(t, out)
+			assertLabel(t, path, "session: SUP-1")
+			if len(entries(t, path)) != 0 {
+				t.Fatal("an automatic label must not be in the inbox")
+			}
+		})
+	}
+}
+
+func TestCursorLaterItemSavesNothing(t *testing.T) {
+	open, path := tempDB(t)
+	runCursor(t, cursorPrompt(t, "SUP-1: fix the export", "gen-1"), open)
+	out, _ := runCursor(t, cursorPrompt(t, "now look at SUP-2", "gen-2"), open)
+	assertCursorPass(t, out)
+	assertLabel(t, path, "session: SUP-1")
+}
+
+func TestCursorLabelsFromFirstPromptNamingAnItem(t *testing.T) {
+	// No transcript: the first prompt without a work item saves nothing and
+	// never opens the database, and the next one that names an item labels.
+	out, _ := runCursor(t, cursorPrompt(t, "Add pagination to the orders endpoint", "gen-1"), neverOpen(t))
+	assertCursorPass(t, out)
+	open, path := tempDB(t)
+	out, _ = runCursor(t, cursorPrompt(t, "this is for https://github.com/example/webapp/issues/7", "gen-2"), open)
+	assertCursorPass(t, out)
+	assertLabel(t, path, "session: example/webapp#7")
+}
+
+func TestCursorPlainJotFirstStillLabels(t *testing.T) {
+	// The common Cursor pattern: jot first, then ask about a ticket. Only a
+	// session: jot with a name stops the label.
+	open, path := tempDB(t)
+	_, o := runCursor(t, fixture(t, "cursor", "capture_single_root", map[string]any{
+		"workspace_roots": []string{t.TempDir()}}), open)
+	if o.Continue {
+		t.Fatalf("a jot must be blocked: %+v", o)
+	}
+	out, _ := runCursor(t, cursorPrompt(t, "SUP-1: fix the export", "gen-2"), open)
+	assertCursorPass(t, out)
+	es := allEntries(t, path)
+	if len(es) != 2 {
+		t.Fatalf("got %d entries, want the jot and the label: %+v", len(es), es)
+	}
+	if l := es[1]; l.Text != "session: SUP-1" || l.Status != store.StatusDone || l.Source != "cursor" || l.SessionID != cursorChat {
+		t.Fatalf("label entry: %+v", l)
+	}
+}
+
+func TestCursorBothHooksSaveOneLabel(t *testing.T) {
+	t.Run("in turn", func(t *testing.T) {
+		open, path := tempDB(t)
+		payload := cursorPrompt(t, "SUP-1: fix the export", "gen-1")
+		a, _ := runCursor(t, payload, open)
+		b, _ := runClaudeAsCursor(t, payload, open)
+		assertCursorPass(t, a)
+		assertCursorPass(t, b)
+		assertLabel(t, path, "session: SUP-1")
+	})
+	t.Run("at once", func(t *testing.T) {
+		// Cursor runs the two hooks side by side: both may find no label yet,
+		// and the generation id saves it once. Labelling drops errors, so a
+		// long busy timeout keeps a slow runner from losing every label.
+		path := filepath.Join(t.TempDir(), "jot.db")
+		open := func() (*app.Service, error) { return app.Open(path, 30*time.Second) }
+		svc, err := open() // create the database before the race
+		if err != nil {
+			t.Fatal(err)
+		}
+		_ = svc.Close()
+		payload := cursorPrompt(t, "SUP-1: fix the export", "gen-1")
+		var wg sync.WaitGroup
+		outs := make([]string, 8)
+		for i := range outs {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				var out bytes.Buffer
+				hook := Cursor
+				if i%2 == 1 {
+					hook = Claude
+				}
+				if err := hook(context.Background(), bytes.NewReader(payload), &out, open); err != nil {
+					t.Error(err)
+				}
+				outs[i] = out.String()
+			}()
+		}
+		wg.Wait()
+		for _, out := range outs {
+			assertCursorPass(t, out)
+		}
+		assertLabel(t, path, "session: SUP-1")
+	})
+}
+
+func TestCursorNoLabel(t *testing.T) {
+	t.Run("hand-typed label first", func(t *testing.T) {
+		open, path := tempDB(t)
+		_, o := runCursor(t, fixture(t, "cursor", "capture_single_root", map[string]any{
+			"prompt": ">> session: by hand", "workspace_roots": []string{t.TempDir()}}), open)
+		if o.Continue {
+			t.Fatalf("a jot must be blocked: %+v", o)
+		}
+		out, _ := runCursor(t, cursorPrompt(t, "SUP-1: fix the export", "gen-2"), open)
+		assertCursorPass(t, out)
+		es := allEntries(t, path)
+		if len(es) != 1 || es[0].Text != "session: by hand" {
+			t.Fatalf("entries: %+v", es)
+		}
+	})
+	t.Run("no conversation id", func(t *testing.T) {
+		out, _ := runCursor(t, fixture(t, "cursor", "normal", map[string]any{
+			"prompt": "SUP-1: fix the export", "conversation_id": ""}), neverOpen(t))
+		assertCursorPass(t, out)
+	})
+	t.Run("database fails", func(t *testing.T) {
+		fail := func() (*app.Service, error) { return nil, os.ErrPermission }
+		out, _ := runCursor(t, cursorPrompt(t, "SUP-1: fix the export", "gen-1"), fail)
+		assertCursorPass(t, out)
+	})
+	t.Run("opener panics", func(t *testing.T) {
+		boom := func() (*app.Service, error) { panic("boom") }
+		out, _ := runCursor(t, cursorPrompt(t, "SUP-1: fix the export", "gen-1"), boom)
+		assertCursorPass(t, out)
+	})
 }

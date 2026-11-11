@@ -15,7 +15,8 @@ An agent hook sees the prompt, saves it to a local SQLite database with its git
 context, and blocks it so the model never sees it. Jots are read back with the
 CLI or a read-only MCP server, and can be promoted to GitHub issues.
 
-Supported: Claude Code and Codex. Cursor is not supported (see below). The
+Supported: Claude Code and Codex. Cursor is not supported (see below),
+though its hook does label chats with their work item (#36). The
 command has been renamed twice, `jot` → `aside` → `jotaside`; see the first
 fact below before touching names.
 
@@ -31,7 +32,8 @@ fact below before touching names.
 - `internal/app/` — the service layer: capture, inbox, done, `promote.go`
   (jot to GitHub issue via `gh`), `sessions.go` (`find` and `sessions`),
   `label.go` (a Claude Code chat's first prompt that names a work item saves
-  a done `session:` label, #32).
+  a done `session:` label, #32; in Cursor, the first prompt that names one,
+  #36).
 - `internal/store/` — SQLite (pure Go, no cgo), one `entries` table, owner-only
   file permissions.
 - `internal/setup/` — `jotaside setup`: finds the binary path, quotes it, and

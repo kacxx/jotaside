@@ -177,8 +177,9 @@ behaviour: [docs/setup.md](docs/setup.md).
 The hook sees every prompt you send, but keeps only jots: prompts that start
 with `>>`, a space and some text (the [capture rule](docs/reference.md#capture-rules)
 has the details). Anything else passes through untouched and isn't stored, with
-one exception: when a Claude Code chat's first prompt names a work item, such as
-`SUP-4821`, the item is saved as the chat's label (see
+one exception: when a Claude Code chat's first prompt, or a Cursor chat's first
+prompt to do so, names a work item, such as `SUP-4821`, the item is saved as
+the chat's label (see
 [Get back to a chat](#get-back-to-a-chat)). The prompt itself isn't.
 
 For each jot, jotaside saves the text, the time, the agent and session it came
@@ -290,7 +291,8 @@ jotaside sessions              # your recent chats and their labels
 ```
 
 Only chats with a jot in them can be found. In Claude Code, a chat whose first
-prompt names a work item gets one automatically: a ticket key (`SUP-4821`),
+prompt names a work item gets one automatically (in Cursor, the first prompt
+that names one): a ticket key (`SUP-4821`),
 `owner/repo#N`, or a GitHub issue or pull request link, saved as
 `owner/repo#N`. The first one in the prompt is used. A label you jot yourself
 wins, so in Codex, or to label a chat that didn't start with its ticket, jot

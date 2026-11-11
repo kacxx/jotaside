@@ -89,8 +89,9 @@ func FirstPrompt(transcriptPath string) bool {
 
 // LabelSession saves req as a done jot, the session's automatic label, unless
 // req's session already has a "session:" jot with a name. It reports whether
-// it saved one; if not, the entry is the existing label, or empty when req
-// has no session id.
+// it saved one; if not, the entry is the existing label (or the entry
+// req.OnceKey matched, when another hook saved the same prompt's label
+// first), or empty when req has no session id.
 func (s *Service) LabelSession(ctx context.Context, req CaptureRequest) (Entry, bool, error) {
 	if req.SessionID == "" {
 		return Entry{}, false, nil
@@ -105,9 +106,9 @@ func (s *Service) LabelSession(ctx context.Context, req CaptureRequest) (Entry, 
 		}
 	}
 	req.Status = store.StatusDone
-	e, err := s.Capture(ctx, req)
+	e, r, err := s.CaptureOnce(ctx, req)
 	if err != nil {
 		return Entry{}, false, err
 	}
-	return e, true, nil
+	return e, r == Saved, nil
 }

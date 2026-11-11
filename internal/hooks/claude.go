@@ -89,6 +89,13 @@ func labelFirstPrompt(ctx context.Context, prompt string, build func() app.Captu
 	if req.SessionID == "" || !app.FirstPrompt(path) {
 		return
 	}
+	saveLabel(ctx, req, item, open)
+}
+
+// saveLabel opens the database and saves "session: <item>" as req's session
+// label, as a done jot, unless the session already has one. Errors are
+// dropped: the prompt goes through either way.
+func saveLabel(ctx context.Context, req app.CaptureRequest, item string, open app.Opener) {
 	svc, err := open()
 	if err != nil {
 		return

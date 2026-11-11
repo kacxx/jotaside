@@ -164,6 +164,20 @@ func TestLabelSession(t *testing.T) {
 		t.Fatal("s2 has a hand-typed label; it must not be overwritten")
 	}
 
+	// The other Cursor hook saved this prompt's label first, between this
+	// hook's label check and its insert: the generation id matches, and
+	// nothing new is saved (#36 D3).
+	other, err := svc.Capture(ctx, CaptureRequest{Source: "cursor", SessionID: "c0", Text: "session: SUP-1",
+		Metadata: map[string]any{"generation_id": "g1"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	e, saved, err = svc.LabelSession(ctx, CaptureRequest{Source: "cursor", SessionID: "c1", Text: "session: SUP-1",
+		Metadata: map[string]any{"generation_id": "g1"}, OnceKey: "generation_id"})
+	if err != nil || saved || e.ID != other.ID {
+		t.Fatalf("same prompt: saved=%v entry=#%d err=%v; want #%d, nothing saved", saved, e.ID, err, other.ID)
+	}
+
 	// And find lists the labelled session with a resume command (D1's check).
 	found, _, err := svc.Find(ctx, "ABC-123")
 	if err != nil || len(found) != 1 || found[0].ID != "s1" {

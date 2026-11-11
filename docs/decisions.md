@@ -496,3 +496,34 @@ hook's environment, and a wrong one such as `SHA-256` is replaced by any later
 **Revisit if:** a chat you needed has no label because its work item came
 after the first prompt, or it was in Codex or Cursor (#32 D1's signal; #11
 indexes every session).
+
+## Cursor chats are labelled too
+
+**Decided:** the Cursor hook labels a chat as the Claude Code hook does (see
+[A Claude Code chat's first prompt labels it](#a-claude-code-chats-first-prompt-labels-it)),
+with source `cursor` and the conversation id as the session. The prompt that
+labels it is the first one that names a work item, in a chat that has no
+`session:` jot yet. The label is saved once when both the Cursor hook and the
+imported Claude Code hook see the prompt, keyed on Cursor's `generation_id`
+as jots are. Codex stays unlabelled. Settled in #36 (D1–D4); this replaces
+#32 D3 for Cursor, and is an exception to
+[Cursor is parked](#cursor-is-parked-until-cursor-fixes-its-bug).
+
+**Why:** the owner does ticket work in Cursor, and `jotaside find <KEY>` never
+listed those chats. Cursor sends no transcript (`transcript_path` is null),
+so the hook can't tell the first prompt as it does in Claude Code; labelling
+from the first prompt that names a work item is the closest it can get, and a
+chat already labelled is skipped, so later prompts label nothing. Cursor's
+blocked-prompt bug, the reason Cursor is parked, doesn't apply: a label is
+saved while the prompt passes through, and the reply stays
+`{"continue":true}`.
+
+**Cost:** a Cursor chat whose first prompts are about something else is
+labelled by the first one that names a work item, which may not be the chat's
+own. A later `>> session:` jot becomes the chat's name, but the old item
+still finds the chat in `jotaside find`, because the old label jot stays. In
+Cursor that jot also hits the blocked-prompt bug, so it needs Cursor's
+edit-and-resend workaround.
+
+**Revisit if:** Cursor chats are labelled with the wrong item often enough to
+matter, or Cursor starts sending a transcript.
