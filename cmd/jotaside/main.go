@@ -47,31 +47,39 @@ var stdinIsTerminal = func(r io.Reader) bool {
 	return ok && (isatty.IsTerminal(f.Fd()) || isatty.IsCygwinTerminal(f.Fd()))
 }
 
-const usage = `jotaside — a side channel for thoughts while working with coding agents
+// commands is the command list jotaside help prints, in order: each
+// command's usage line and any line under it. "jotaside <cmd> --help" prints
+// the command's entry, so the two can't drift (#39).
+var commands = []struct{ name, usage string }{
+	{"add", `  jotaside add <text...>        capture a jot from the terminal (reads stdin if no text)`},
+	{"inbox", `  jotaside inbox [-n N] [--older D]  list the newest inbox jots (default 20, 0 = all),
+                                optionally only those at least D days old`},
+	{"show", `  jotaside show <id>            show one jot with its context`},
+	{"activity", `  jotaside activity <id>        what a jot's own session did after it (Claude Code, Claude Desktop)`},
+	{"open", `  jotaside open <id>            open the chat a jot came from (macOS, Windows; Claude Desktop, Codex app)`},
+	{"search", `  jotaside search <query...>    search all jots (substring, case-insensitive)`},
+	{"find", `  jotaside find <query...>      sessions with a jot matching the query, and how to resume them`},
+	{"sessions", `  jotaside sessions [-n N]      recent sessions with their label (default 10, 0 = all)`},
+	{"done", `  jotaside done <id>... [--note "why"]  mark jots as done, optionally recording why`},
+	{"check", `  jotaside check <id>...        record when open jots were last looked at and left open`},
+	{"promote", `  jotaside promote <id> [--repo owner/name] [--with-reply] [--yes [--public]] [--dry-run]
+                                turn a jot into a GitHub issue with the gh CLI`},
+	{"backup", `  jotaside backup <path>        write a consistent copy of the database (never overwrites)`},
+	{"paths", `  jotaside paths                print data paths and check which jotaside is on PATH`},
+	{"setup", `  jotaside setup claude|codex [--dry-run] [--mcp]
+                                add the prompt hook to the agent's config file`},
+	{"hook", `  jotaside hook claude|codex|cursor
+                                run as a prompt hook (reads the payload on stdin)`},
+	{"mcp", `  jotaside mcp                  run the read-only MCP server on stdio`},
+	{"version", `  jotaside version`},
+}
+
+const usageHeader = `jotaside — a side channel for thoughts while working with coding agents
 
 Usage:
-  jotaside add <text...>        capture a jot from the terminal (reads stdin if no text)
-  jotaside inbox [-n N] [--older D]  list the newest inbox jots (default 20, 0 = all),
-                                optionally only those at least D days old
-  jotaside show <id>            show one jot with its context
-  jotaside activity <id>        what a jot's own session did after it (Claude Code, Claude Desktop)
-  jotaside open <id>            open the chat a jot came from (macOS, Windows; Claude Desktop, Codex app)
-  jotaside search <query...>    search all jots (substring, case-insensitive)
-  jotaside find <query...>      sessions with a jot matching the query, and how to resume them
-  jotaside sessions [-n N]      recent sessions with their label (default 10, 0 = all)
-  jotaside done <id>... [--note "why"]  mark jots as done, optionally recording why
-  jotaside check <id>...        record when open jots were last looked at and left open
-  jotaside promote <id> [--repo owner/name] [--with-reply] [--yes [--public]] [--dry-run]
-                                turn a jot into a GitHub issue with the gh CLI
-  jotaside backup <path>        write a consistent copy of the database (never overwrites)
-  jotaside paths                print data paths and check which jotaside is on PATH
-  jotaside setup claude|codex [--dry-run] [--mcp]
-                                add the prompt hook to the agent's config file
-  jotaside hook claude|codex|cursor
-                                run as a prompt hook (reads the payload on stdin)
-  jotaside mcp                  run the read-only MCP server on stdio
-  jotaside version
+`
 
+const usageFooter = `
 Environment:
   JOT_DB                        database path (default: $XDG_DATA_HOME/jot/jot.db,
                                 else the OS per-user data directory)
@@ -79,20 +87,54 @@ Environment:
                                 (default 2000, capped at 10000)
 `
 
+// usage is what jotaside help prints.
+var usage = func() string {
+	var b strings.Builder
+	b.WriteString(usageHeader)
+	for _, c := range commands {
+		b.WriteString(c.usage + "\n")
+	}
+	b.WriteString(usageFooter)
+	return b.String()
+}()
+
+// commandHelp returns cmd's entry in jotaside help, ending in a newline, if
+// args asks for help: --help or -h as the first argument (#39 D4). Later
+// arguments don't count: "find foo --help" searches for "foo --help".
+func commandHelp(cmd string, args []string) (string, bool) {
+	if len(args) == 0 || (args[0] != "--help" && args[0] != "-h") {
+		return "", false
+	}
+	for _, c := range commands {
+		if c.name == cmd {
+			return c.usage + "\n", true
+		}
+	}
+	return "", false
+}
+
 func main() {
 	// If a reader closes its end, a write to stdout must fail with EPIPE rather
 	// than kill the process with SIGPIPE: hooks exit 0 (or 2 for a Claude Code
 	// or Codex block), and jotaside mcp and the CLI shut down through their normal
 	// error paths.
 	signal.Ignore(syscall.SIGPIPE)
-	args := os.Args[1:]
+	os.Exit(mainCode(os.Args[1:], os.Stdin, os.Stdout, os.Stderr))
+}
+
+// mainCode runs jotaside with args and returns its exit code.
+func mainCode(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
+	// "hook --help" goes to run, which prints the hook's usage.
 	if len(args) > 0 && args[0] == "hook" {
-		os.Exit(runHook(args[1:], os.Stdin, os.Stdout, os.Stderr))
+		if _, help := commandHelp("hook", args[1:]); !help {
+			return runHook(args[1:], stdin, stdout, stderr)
+		}
 	}
-	if err := run(args, os.Stdin, os.Stdout); err != nil {
-		fmt.Fprintln(os.Stderr, "jotaside:", err)
-		os.Exit(1)
+	if err := run(args, stdin, stdout); err != nil {
+		fmt.Fprintln(stderr, "jotaside:", err)
+		return 1
 	}
+	return 0
 }
 
 // runHook returns 0, or 2 for a Claude Code or Codex block: a hook must never
@@ -141,6 +183,13 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	}
 	cmd, args := args[0], args[1:]
 	ctx := context.Background()
+
+	// --help is answered here, before any command runs or the database
+	// opens (#39 D3).
+	if h, ok := commandHelp(cmd, args); ok {
+		fmt.Fprint(stdout, h)
+		return nil
+	}
 
 	switch cmd {
 	case "help", "-h", "--help":
