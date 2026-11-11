@@ -1,6 +1,6 @@
 # Worklog format
 
-The grammar of the markdown worklog that `cmd/worklog` (#42) reads and writes. It's the same grammar an existing worklog skill already uses, so the two can write one log (kacxx/notebook#38, D10). Copied from that skill's grammar on 2026-11-11; `cmd/worklog` doesn't follow all of it yet (#42 review).
+The grammar a worklog command (#42, in progress) is meant to read and write. It's the grammar an existing worklog skill already uses, so the two can write one log (kacxx/notebook#38, D10). Copied from that skill's grammar on 2026-11-11. It's a target, not verified against any jotaside code yet.
 
 One `##` heading per live workstream, a metadata line, an optional description, then action items as checkboxes. Ticket keys in the example are placeholders; the grammar doesn't care about their shape.
 
@@ -36,7 +36,7 @@ id: esc-6784 · opened: 2026-08-27 · links: ESC-6784 · nudge: 2d
 | `opened` | yes | ISO date |
 | `links` | no | Ticket keys, PR or wiki URLs, space-separated |
 | `review` | no | Review cadence, default `1w` |
-| `nudge` | no | Staleness threshold for delegated items, default `3d` |
+| `nudge` | no | Staleness threshold for delegated items, default `3d`; a deployment may set a tighter default for workstreams that link an escalation |
 
 **Item line.** `- [ ]` or `- [x]`, a free-text description, then ` — ` and `·`-separated facts, all optional. The owner defaults to `me` when absent.
 
@@ -47,7 +47,7 @@ id: esc-6784 · opened: 2026-08-27 · links: ESC-6784 · nudge: 2d
 | `since <ISO date>` | When it was delegated. Ages against `nudge` |
 | `due <ISO date>` | When the owner's action is due |
 | `done <ISO date>` | Closure date. Required on `- [x]` items |
-| `<TICKET-KEY>` / URL | Link to a ticket or PR; several may share one fact, space-separated |
+| `<TICKET-KEY>` / URL | Link to a ticket or PR. Existing logs also put several space-separated keys in one fact |
 | `chat:<id>` | Session where the work happened: the first 8 characters of its session ID |
 
 Examples of facts in order: `— me · due 2026-09-02 · ABC-1290`, `— @alex since 2026-08-31 · ABC-1290`, `— done 2026-08-31 · ABC-1290 · chat:a1b2c3d4`.
@@ -62,13 +62,13 @@ There is no blocked state: a blocker is a person to wait on, or a sentence in th
 ## Writing an item
 
 - **Add:** `- [ ] <text> — <facts>`, after the workstream's last item. Facts follow ` — `; a stamp is one more fact, ` · chat:<first 8>`.
-- **Close:** change `- [ ]` to `- [x]`, drop `me` and `due`, and write `done <today>` as the first fact. Keep keys and `chat:` stamps; a delegated item keeps `@person since …`.
+- **Close:** change `- [ ]` to `- [x]` and add `done <today>` (required on done items). Done items in existing logs carry no `me` or `due`, and delegated ones read `@person since … · done …`. Keep keys and `chat:` stamps.
 - **Never reformat** a line that doesn't parse. Report it instead.
 
 ## Archiving
 
 Archived blocks move verbatim to `archive/YYYY-QN.md` for the current quarter:
 - a workstream whose items are all done moves whole;
-- the worklog skill may also move done items older than a set age (proposed: 7 days) under their workstream's id.
+- a tool may also archive done items by age, under their workstream's id.
 
 The log lives in a local git repo with **no remote**: it holds private notes.
