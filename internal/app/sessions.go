@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"sort"
@@ -166,6 +167,14 @@ func setStartDirs(ss []Session) {
 			}
 		}
 	}
+}
+
+// ClaudeSession returns the Claude Code session whose transcript is at path,
+// with the directory it started in, for a resume command when the session
+// has no jot. The ID is the transcript's file name.
+func ClaudeSession(path string) Session {
+	id := strings.TrimSuffix(filepath.Base(path), ".jsonl")
+	return Session{Source: "claude", ID: id, Cwd: transcriptStartDir(path)}
 }
 
 // transcriptStartDir returns the first cwd recorded in a Claude Code
