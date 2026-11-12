@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.7](https://github.com/kacxx/jotaside/compare/v0.1.6...v0.1.7) (2026-11-12)
+
+
+### Features
+
+* worklog command that links a log's items to their sessions ([#42](https://github.com/kacxx/jotaside/issues/42)) ([04b3f5a](https://github.com/kacxx/jotaside/commit/04b3f5a7373e49ed17b0f6f1f79ac9b94e486049))
+
 ## [0.1.6](https://github.com/kacxx/jotaside/compare/v0.1.5...v0.1.6) (2026-11-11)
 
 
