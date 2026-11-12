@@ -19,10 +19,10 @@ import (
 // Find also lists the Claude Code sessions whose transcripts acted on the
 // query (#35): it was in a prompt the person typed (slash-command arguments,
 // ! commands and prompts queued while the agent was busy included) or in the
-// input of one of the session's tool calls. Tool output, loaded context
-// (memory and instruction files, which arrive inside <system-reminder> blocks
-// or as attachments) and the model's own text are never read, and
-// scheduled-task runs are left out. A subagent's transcript counts for the
+// input of one of the session's tool calls, other than jotaside's own lookups.
+// Tool output, loaded context (memory and instruction files, which arrive
+// inside <system-reminder> blocks or as attachments) and the model's own text
+// are never read, and scheduled-task runs are left out. A subagent's transcript counts for the
 // session that started it.
 //
 // Every transcript is read on each find, so the scan first looks for the
@@ -486,7 +486,27 @@ type record struct {
 type contentBlock struct {
 	Type  string          `json:"type"`
 	Text  string          `json:"text"`
+	Name  string          `json:"name"`
 	Input json.RawMessage `json:"input"`
+}
+
+// jotasideLookup is a shell command that looks something up in jotaside.
+var jotasideLookup = regexp.MustCompile(`\bjotaside\s+(?:find|search|show)\b`)
+
+// isLookup reports whether a tool call only looked something up in jotaside:
+// a call to its MCP server, or a Bash command running jotaside find, search
+// or show. Such a call names the key but doesn't act on it (#35 D3).
+func isLookup(b contentBlock) bool {
+	if strings.HasPrefix(b.Name, "mcp__jotaside__") {
+		return true
+	}
+	if b.Name != "Bash" {
+		return false
+	}
+	var in struct {
+		Command string `json:"command"`
+	}
+	return json.Unmarshal(b.Input, &in) == nil && jotasideLookup.MatchString(in.Command)
 }
 
 // readTranscript reads the transcript's lines that have one of the queries in
@@ -588,7 +608,7 @@ func actedTexts(rec record) []string {
 		}
 	}
 	for _, b := range contentBlocks(rec.Message) {
-		if b.Type == "tool_use" {
+		if b.Type == "tool_use" && !isLookup(b) {
 			out = appendStrings(out, b.Input)
 		}
 	}

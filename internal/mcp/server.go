@@ -347,7 +347,8 @@ var tools = []map[string]any{
 			"whole word; anything else is a substring. Each session has the matching jots, its repo and " +
 			"branch, resume_command to reopen it (the user runs it; this tool doesn't). " + checkedNote + quoteNote +
 			sessionOpenNote + "Also lists the Claude Code sessions whose transcripts show the user's typed prompts or the " +
-			"session's tool calls naming the query (tool output and loaded memory or instruction files are not read; " +
+			"session's tool calls naming the query (tool output and loaded memory or instruction files are not read, " +
+			"jotaside's own lookups such as this tool don't count; " +
 			"scheduled-task runs are left out); a session found only that way has match_count 0, no label and no open_url. limit caps the sessions and the jots not in a session, most recent first; " +
 			"total_sessions and total_not_in_a_session are the counts before the cut. Each session lists its " +
 			fmt.Sprint(maxSessionMatches) + " newest matching jots (oldest first), and match_count is how many matched.",

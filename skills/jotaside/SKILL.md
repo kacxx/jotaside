@@ -20,6 +20,8 @@ Prefer the MCP tools when they are available. They are read-only.
 - "Where did I work on SUP-4821?": `find`. It returns the sessions and a
   `resume_command` for each, including Claude Code sessions with no jot whose
   prompts or tool calls named it (those have `match_count` 0 and no label).
+  Looking a key up with jotaside doesn't count, so the chat you ask from isn't
+  listed for it unless it worked on the key.
 - "What was I working on last?": `sessions`.
 - "Has jot 31 been done?", "update jot 31": see "Updating a jot" below.
 - "Update all", "which of my jots are done?": see "Updating all jots" below.

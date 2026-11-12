@@ -430,3 +430,65 @@ func TestNeedleForEscapedQuery(t *testing.T) {
 		}
 	}
 }
+
+func toolUseLine(name, input string) string {
+	return `{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t","name":"` + name + `","input":` + input + `}]}}`
+}
+
+// jotaside's own lookups name a key without acting on it (#35 D3, revised
+// 2026-11-13); any other tool call naming it still counts.
+func TestLookupsDontCount(t *testing.T) {
+	dir := t.TempDir()
+	const (
+		bash   = "c0000000-0000-4000-8000-00000000000c"
+		path   = "c1000000-0000-4000-8000-00000000000c"
+		mcp    = "d0000000-0000-4000-8000-00000000000d"
+		real   = "e0000000-0000-4000-8000-00000000000e"
+		sub    = "f0000000-0000-4000-8000-00000000000f"
+		search = "f1000000-0000-4000-8000-00000000000f"
+	)
+	for id, tool := range map[string]string{
+		bash:   toolUseLine("Bash", `{"command":"jotaside find ABC-1"}`),
+		path:   toolUseLine("Bash", `{"command":"JOT_DB=/tmp/x.db /usr/local/bin/jotaside show 12 | grep ABC-1"}`),
+		mcp:    toolUseLine("mcp__jotaside__find", `{"query":"ABC-1"}`),
+		search: toolUseLine("mcp__jotaside__search", `{"query":"ABC-1 cache"}`),
+		real:   toolUseLine("Bash", `{"command":"git checkout -b ABC-1-fix"}`),
+		sub:    toolUseLine("mcp__tracker__getIssue", `{"key":"ABC-1"}`),
+	} {
+		writeScanFile(t, dir, filepath.Join("-p", id+".jsonl"), typedLine("/w", "where was that?"), tool)
+	}
+	// A lookup in a subagent doesn't count either.
+	writeScanFile(t, dir, filepath.Join("-p", bash, "subagents", "agent-1.jsonl"), toolUseLine("Bash", `{"command":"jotaside   search ABC-1"}`))
+	svc := sessionService(t)
+	svc.SetTranscriptsDir(dir)
+	ss, _, err := svc.Find(context.Background(), "ABC-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := sessionIDs(ss), []string{real, sub}; !slices.Equal(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+func TestIsLookup(t *testing.T) {
+	for _, tc := range []struct {
+		name, input string
+		want        bool
+	}{
+		{"Bash", `{"command":"jotaside find ABC-1"}`, true},
+		{"Bash", `{"command":"cd x && jotaside search 'ABC-1'"}`, true},
+		{"Bash", `{"command":"jotaside show 88"}`, true},
+		{"Bash", `{"command":"jotaside done 88"}`, false},
+		{"Bash", `{"command":"myjotaside find ABC-1"}`, false},
+		{"Bash", `{"command":"jotasidefind ABC-1"}`, false},
+		{"mcp__jotaside__find", `{"query":"ABC-1"}`, true},
+		{"mcp__jotaside__activity", `{"id":3}`, true},
+		{"mcp__other__find", `{"query":"ABC-1"}`, false},
+		{"Grep", `{"pattern":"jotaside find ABC-1"}`, false},
+	} {
+		b := contentBlock{Type: "tool_use", Name: tc.name, Input: json.RawMessage(tc.input)}
+		if got := isLookup(b); got != tc.want {
+			t.Errorf("isLookup(%s %s) = %v", tc.name, tc.input, got)
+		}
+	}
+}

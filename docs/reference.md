@@ -112,7 +112,10 @@ under their labels, without the matching jots.
   sessions alike. A session is listed if the query is in something you typed
   (a prompt, including one sent while the agent was busy; a `!` command; a
   slash command's arguments, but not the command's own text) or in the input
-  of one of its tool calls, matched as above. Not read:
+  of one of its tool calls, matched as above. jotaside's own lookups don't
+  count: a Bash call whose command runs `jotaside find`, `search` or `show`,
+  or a call to one of its MCP tools (`mcp__jotaside__…`), is skipped
+  entirely, so a chat that only looked a key up isn't listed for it. Not read:
   `<system-reminder>` blocks, so memory and instruction files loaded into the
   chat; tool output; the agent's replies; the summary Claude Code writes when
   a chat runs out of context. Scheduled-task runs are left out. A subagent's

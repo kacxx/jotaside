@@ -301,7 +301,9 @@ jotaside sessions              # your recent chats and their labels
 used it, even with no jot in it, like the second chat above (such a chat gets a
 resume command but no `jotaside open`, since that opens a jot's chat). Tool output and
 the memory and instruction files loaded into a chat don't count, and neither
-do scheduled tasks; a subagent's work counts for the chat that started it.
+do scheduled tasks or jotaside's own lookups (`jotaside find`, `search` or
+`show`, or its MCP tools), so asking where you worked on a key doesn't list
+the chat you asked in. A subagent's work counts for the chat that started it.
 
 Codex and Cursor chats are found only by their jots. In Claude Code, a chat whose first
 prompt names a work item gets one automatically (in Cursor, the first prompt
