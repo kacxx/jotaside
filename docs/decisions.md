@@ -538,7 +538,9 @@ included) or tool-call inputs match the query, by `find`'s own rule, with
 agent's replies are never read; scheduled-task runs are left out; a subagent's
 transcript counts for its parent. These sessions are merged with the ones found
 by jots, once each, and every session is headed by the query. Always on, no
-flag. The first-prompt labels stay. Settled in #35 (D1–D10).
+flag. The first-prompt labels stay. Settled in #35 (D1–D10). `find`'s
+whole-word rule now covers `owner/repo#N` queries as well as ticket keys,
+since `worklog` looks those up and a substring match let `#3` find `#35`.
 
 **Why:** a session was findable only by its first prompt's label, so one that
 moved from ticket to ticket, or didn't start with one, was missed: on

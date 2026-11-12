@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"slices"
@@ -248,14 +249,16 @@ func TestPrefilterChunkBoundary(t *testing.T) {
 		t.Fatal(err)
 	}
 	var buf []byte
-	got := fileHits(context.Background(), path, [][]byte{[]byte("abc-77"), []byte("zzz"), []byte("end\"}")}, &buf)
+	needles := [][]byte{[]byte("abc-77"), []byte("zzz"), []byte("end\"}")}
+	got := fileHits(context.Background(), path, needles, groupNeedles(needles, nil), &buf)
 	if !slices.Equal(got, []bool{true, false, true}) {
 		t.Fatalf("got %v", got)
 	}
 	if len(buf) < prefilterChunk {
 		t.Fatal("the buffer isn't kept for the next file")
 	}
-	if got := fileHits(context.Background(), path, [][]byte{[]byte("zzz")}, &buf); got != nil {
+	zzz := [][]byte{[]byte("zzz")}
+	if got := fileHits(context.Background(), path, zzz, groupNeedles(zzz, nil), &buf); got != nil {
 		t.Fatalf("no needle found: got %v", got)
 	}
 }
@@ -308,5 +311,119 @@ func TestMarkNeedles(t *testing.T) {
 	// Already found ones aren't counted again.
 	if n := markNeedles([]byte("abc-1 zz-9"), needles, groups, found); n != 1 || !found[5] {
 		t.Fatalf("second window: set %d, found %v", n, found)
+	}
+}
+
+// writeScanFile writes JSON lines under dir.
+func writeScanFile(t *testing.T, dir, rel string, lines ...string) string {
+	t.Helper()
+	path := filepath.Join(dir, rel)
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func typedLine(cwd, text string) string {
+	b, _ := json.Marshal(map[string]any{"type": "user", "cwd": cwd, "sessionId": "x", "message": map[string]any{"role": "user", "content": text}})
+	return string(b)
+}
+
+// A session id with a transcript in two project folders is one session,
+// resumed from the newer; an old-style agent-<id>.jsonl counts for the
+// session its records name.
+func TestScanSessionLayouts(t *testing.T) {
+	dir := t.TempDir()
+	const id = "77777777-0000-4000-8000-000000000007"
+	older := writeScanFile(t, dir, filepath.Join("-a", id+".jsonl"), typedLine("/work/a", "start ABC-5"))
+	writeScanFile(t, dir, filepath.Join("-b", id+".jsonl"), typedLine("/work/b", "more on ABC-5"))
+	old := time.Now().Add(-time.Hour)
+	if err := os.Chtimes(older, old, old); err != nil {
+		t.Fatal(err)
+	}
+	writeScanFile(t, dir, filepath.Join("-b", "agent-1a2b3c4d.jsonl"),
+		`{"type":"assistant","sessionId":"`+id+`","isSidechain":true,"message":{"role":"assistant","content":[{"type":"tool_use","name":"Bash","input":{"command":"tracker show LEGACY-1"}}]}}`)
+	svc := sessionService(t)
+	svc.SetTranscriptsDir(dir)
+	for _, q := range []string{"ABC-5", "LEGACY-1"} {
+		ss, _, err := svc.Find(context.Background(), q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(ss) != 1 || ss[0].ID != id || ss[0].Cwd != "/work/b" {
+			t.Errorf("find %s: %+v", q, ss)
+		}
+	}
+}
+
+// owner/repo#N matches as a whole reference, in jots and transcripts.
+func TestFindRepoRefWhole(t *testing.T) {
+	dir := t.TempDir()
+	writeScanFile(t, dir, filepath.Join("-p", "88888888-0000-4000-8000-000000000008.jsonl"), typedLine("/w", "review acme/widgets#35 and xacme/widgets#3"))
+	writeScanFile(t, dir, filepath.Join("-p", "99999999-0000-4000-8000-000000000009.jsonl"), typedLine("/w", "fix acme/widgets#3."))
+	svc := sessionService(t)
+	svc.SetTranscriptsDir(dir)
+	jot(t, svc, "codex", "c1", "/w", "acme/widgets#36 notes")
+	jot(t, svc, "codex", "c2", "/w", "see acme/widgets#3, then")
+	ss, _, err := svc.Find(context.Background(), " acme/widgets#3 ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := sessionIDs(ss), []string{"99999999-0000-4000-8000-000000000009", "c2"}; !slices.Equal(got, want) {
+		t.Fatalf("got %v, want %v", got, want)
+	}
+}
+
+// A compaction summary isn't typed; a prompt that quotes its opening words
+// later on is.
+func TestCompactSummary(t *testing.T) {
+	dir := t.TempDir()
+	writeScanFile(t, dir, filepath.Join("-p", "aaaaaaaa-0000-4000-8000-00000000000a.jsonl"),
+		typedLine("/w", "hello"),
+		`{"type":"user","isCompactSummary":true,"message":{"role":"user","content":"Summary of the chat: SUM-7 was fixed."}}`,
+		typedLine("/w", "Earlier I wrote \"This session is being continued\" about QUOTE-8."))
+	svc := sessionService(t)
+	svc.SetTranscriptsDir(dir)
+	for q, want := range map[string]int{"SUM-7": 0, "QUOTE-8": 1} {
+		ss, _, err := svc.Find(context.Background(), q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(ss) != want {
+			t.Errorf("find %s: %d sessions, want %d", q, len(ss), want)
+		}
+	}
+}
+
+// A jotted session's last activity comes from its transcript when that is
+// newer, even if the scan didn't match the transcript.
+func TestFindLastActiveFromTranscript(t *testing.T) {
+	dir := t.TempDir()
+	const id = "bbbbbbbb-0000-4000-8000-00000000000b"
+	writeScanFile(t, dir, filepath.Join("-p", id+".jsonl"), typedLine("/work/start", "unrelated work"))
+	later := time.Now().Add(48 * time.Hour)
+	if err := os.Chtimes(filepath.Join(dir, "-p", id+".jsonl"), later, later); err != nil {
+		t.Fatal(err)
+	}
+	svc := sessionService(t)
+	svc.SetTranscriptsDir(dir)
+	jot(t, svc, "claude", id, "/work/start/sub", "session: ABC-9")
+	ss, _, err := svc.Find(context.Background(), "ABC-9")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ss) != 1 || !ss[0].LastActive.Equal(later) || ss[0].Cwd != "/work/start" {
+		t.Fatalf("got %+v", ss)
+	}
+}
+
+func TestNeedleForEscapedQuery(t *testing.T) {
+	for q, want := range map[string]string{`"`: `\"`, `\`: `\\`, "a\"bc": "bc", "\n": `\n`} {
+		if got := string(newQueryMatcher(q).needle); got != want {
+			t.Errorf("needle for %q: %q, want %q", q, got, want)
+		}
 	}
 }

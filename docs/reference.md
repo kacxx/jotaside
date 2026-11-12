@@ -101,7 +101,9 @@ under their labels, without the matching jots.
   `SUP-4821`, only matches that key as a word, so it doesn't list `SUP-48210`
   or `XSUP-4821`. Any other character next to it counts as a separator,
   including `_` and `/`, so `SUP-4821_cache` and `feature/SUP-4821-fix`
-  match. Anything else is a substring search, as in `jotaside search`.
+  match. An `owner/repo#N` query matches as a whole reference too, so
+  `acme/widgets#3` doesn't list `acme/widgets#35`. Anything else is a
+  substring search, as in `jotaside search`.
   There is no list of ticket prefixes to configure and no tag table: the
   filter runs on the matching jots at query time.
 - Done jots are listed with `(done)`, as in `jotaside search`.
@@ -115,13 +117,16 @@ under their labels, without the matching jots.
   chat; tool output; the agent's replies; the summary Claude Code writes when
   a chat runs out of context. Scheduled-task runs are left out. A subagent's
   transcript (`<session>/subagents/*.jsonl`) counts for the session that
-  started it; if only its subagents' files are left, the session can't be
-  resumed and isn't listed. A session found both ways is listed once, with
+  started it, as does an older `<project>/agent-<id>.jsonl`; if only its
+  subagents' files are left, the session can't be resumed and isn't listed.
+  A session with a transcript in two project folders is listed once, resumed
+  from the newer. A session found both ways is listed once, with
   its jots; one found only in its transcript shows `claude · last <age>`
   (from the transcript's last change) and its resume command, but no
   `jotaside open` line even from Claude Desktop: the link is built from a
   session's jots, and `jotaside open` takes a jot. Sessions are ordered by
-  their last activity, jot or transcript, newest first, and `last` shows it.
+  their last activity, newest jot or transcript change, newest first, and
+  `last` shows it.
   On a Mac with 2.3 GB of transcripts, a `find` took about 1 s with the
   files in the disk cache (checked 2026-11-12, on the change in #35).
 - **Codex and Cursor chats are found only by their jots.** A chat where you

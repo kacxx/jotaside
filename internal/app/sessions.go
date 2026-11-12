@@ -136,14 +136,14 @@ func (s *Service) FindEach(ctx context.Context, qs []string) ([]Found, error) {
 		return nil, err
 	}
 	groups := groupSessions(all)
-	scanned, err := scanTranscripts(ctx, s.transcripts, ms)
+	scanned, every, err := scanTranscripts(ctx, s.transcripts, ms)
 	if err != nil {
 		return nil, err
 	}
-	starts := map[sessionKey]string{} // start directories already read
+	starts := map[string]string{} // start directory by transcript, once read
 	out := make([]Found, len(qs))
 	for i, m := range ms {
-		ss, loose, err := s.findOne(ctx, m, groups, scanned[i], starts)
+		ss, loose, err := s.findOne(ctx, m, groups, scanned[i], every, starts)
 		if err != nil {
 			return nil, err
 		}
@@ -152,9 +152,10 @@ func (s *Service) FindEach(ctx context.Context, qs []string) ([]Found, error) {
 	return out, nil
 }
 
-// findOne is Find for one query, given every session with jots and the
-// sessions the scan found for it.
-func (s *Service) findOne(ctx context.Context, m queryMatcher, groups []Session, scanned []scannedSession, starts map[sessionKey]string) ([]Session, []Entry, error) {
+// findOne is Find for one query, given every session with jots, the
+// sessions the scan found for it, and every Claude Code transcript by
+// session id.
+func (s *Service) findOne(ctx context.Context, m queryMatcher, groups []Session, scanned []scannedSession, every map[string]scannedSession, starts map[string]string) ([]Session, []Entry, error) {
 	matches, err := s.store.Search(ctx, m.query, 0)
 	if err != nil {
 		return nil, nil, err
@@ -180,48 +181,51 @@ func (s *Service) findOne(ctx context.Context, m queryMatcher, groups []Session,
 			byKey[keyOf(e)] = append(byKey[keyOf(e)], e)
 		}
 	}
-	fromScan := map[sessionKey]scannedSession{}
+	inScan := map[string]bool{}
 	for _, x := range scanned {
-		fromScan[sessionKey{"claude", x.id}] = x
+		inScan[x.id] = true
+	}
+	startDir := func(path string) string {
+		dir, ok := starts[path]
+		if !ok {
+			dir = transcriptStartDir(path)
+			starts[path] = dir
+		}
+		return dir
 	}
 	var found []Session
 	for _, ss := range groups {
-		k := sessionKey{ss.Source, ss.ID}
-		jm, jotted := byKey[k]
-		x, inScan := fromScan[k]
-		if !jotted && !inScan {
+		jm, jotted := byKey[sessionKey{ss.Source, ss.ID}]
+		claude := ss.Source == "claude"
+		if scan := claude && inScan[ss.ID]; !jotted && !scan {
 			continue
 		}
 		ss.Matches = jm
-		if x.lastActive.After(ss.LastActive) {
-			ss.LastActive = x.lastActive
-		}
-		delete(fromScan, k)
-		found = append(found, ss)
-	}
-	for i := range found {
-		k := sessionKey{found[i].Source, found[i].ID}
-		if dir, ok := starts[k]; ok {
-			if dir != "" {
-				found[i].Cwd = dir
+		if claude {
+			delete(inScan, ss.ID) // listed with its jots
+			if x, ok := every[ss.ID]; ok {
+				// Its transcript may show later work than its newest jot.
+				if x.lastActive.After(ss.LastActive) {
+					ss.LastActive = x.lastActive
+				}
+				if dir := startDir(x.path); dir != "" {
+					ss.Cwd = dir
+				}
+			} else {
+				// Transcript not listed (the scan is off, or it is elsewhere):
+				// the one its jots record.
+				one := []Session{ss}
+				setStartDirs(one)
+				ss = one[0]
 			}
-			continue
 		}
-		before := found[i].Cwd
-		setStartDirs(found[i : i+1])
-		if found[i].Cwd != before {
-			starts[k] = found[i].Cwd
-		} else {
-			starts[k] = ""
-		}
+		found = append(found, ss)
 	}
 	for _, x := range scanned {
-		if _, ok := fromScan[sessionKey{"claude", x.id}]; !ok {
-			continue // listed with its jots
+		if !inScan[x.id] {
+			continue
 		}
-		ss := ClaudeSession(x.path)
-		ss.LastActive = x.lastActive
-		found = append(found, ss)
+		found = append(found, Session{Source: "claude", ID: x.id, Cwd: startDir(x.path), LastActive: x.lastActive})
 	}
 	sort.SliceStable(found, func(i, j int) bool { return found[i].LastActive.After(found[j].LastActive) })
 	return found, loose, nil
@@ -245,18 +249,31 @@ func newQueryMatcher(q string) queryMatcher {
 	if key := strings.TrimSpace(q); ticketKeyShape.MatchString(key) {
 		q = key
 	}
+	if ref := strings.TrimSpace(q); repoRefShape.MatchString(ref) {
+		q = ref
+	}
 	m := queryMatcher{query: q, lower: asciiLower(q)}
-	if ticketKeyShape.MatchString(q) {
+	switch {
+	case ticketKeyShape.MatchString(q):
 		// Not \b: it counts "_" as part of a word, which would miss
 		// SUP-4821_cache.
 		m.whole = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9])` + regexp.QuoteMeta(q) + `(?:[^A-Za-z0-9]|$)`)
+	case repoRefShape.MatchString(q):
+		// owner/repo#3 is not owner/repo#35, nor xowner/repo#3.
+		m.whole = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9._-])` + regexp.QuoteMeta(q) + `(?:[^0-9]|$)`)
 	}
 	// JSON escapes quotes, backslashes and control characters, so the bytes of
 	// a query with them aren't in the file; look for the longest run without.
-	for _, part := range strings.FieldsFunc(m.lower, func(r rune) bool { return r == '"' || r == '\\' || r < 0x20 || r == 0x7f }) {
+	for _, part := range strings.FieldsFunc(m.lower, jsonEscapes) {
 		if len(part) > len(m.needle) {
 			m.needle = []byte(part)
 		}
+	}
+	if len(m.needle) == 0 {
+		// Nothing but such characters: look for them as JSON writes them, so
+		// the prefilter still skips most files.
+		b, _ := json.Marshal(m.lower)
+		m.needle = b[1 : len(b)-1]
 	}
 	return m
 }
@@ -330,6 +347,13 @@ func transcriptStartDir(path string) string {
 	}
 	return ""
 }
+
+// repoRefShape is a query that looks like owner/repo#N, as WorkItem returns
+// it.
+var repoRefShape = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+#[0-9]+$`)
+
+// jsonEscapes reports whether JSON writes r escaped.
+func jsonEscapes(r rune) bool { return r == '"' || r == '\\' || r < 0x20 }
 
 // ticketKeyShape is a query that looks like a ticket key. Which prefixes are
 // really tickets isn't known (there is no allowlist), so UTF-8 is treated the

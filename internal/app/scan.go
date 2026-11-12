@@ -63,14 +63,16 @@ var (
 )
 
 // continuedMarker starts the summary Claude Code writes as a user record when
-// a session runs out of context; it quotes the earlier conversation.
+// a session runs out of context; it quotes the earlier conversation. Records
+// are flagged isCompactSummary too; the marker catches any that aren't.
 const continuedMarker = "This session is being continued"
 
 // scannedSession is a Claude Code session the scan found.
 type scannedSession struct {
 	id         string
-	path       string // its transcript
-	lastActive time.Time
+	path       string // its transcript, the newest if there are two
+	pathMod    time.Time
+	lastActive time.Time // when any of its files last changed
 }
 
 // transcriptFile is one transcript and the session it counts for.
@@ -82,25 +84,31 @@ type transcriptFile struct {
 }
 
 // scanTranscripts returns, for each matcher, the sessions in dir that acted
-// on its query.
-func scanTranscripts(ctx context.Context, dir string, ms []queryMatcher) ([][]scannedSession, error) {
+// on its query, and every session in dir by id, for its transcript and when
+// it was last active.
+func scanTranscripts(ctx context.Context, dir string, ms []queryMatcher) ([][]scannedSession, map[string]scannedSession, error) {
 	out := make([][]scannedSession, len(ms))
 	if dir == "" || len(ms) == 0 {
-		return out, nil
+		return out, nil, nil
 	}
 	sessions, files := listTranscripts(dir)
+	every := make(map[string]scannedSession, len(sessions))
+	for _, x := range sessions {
+		every[x.id] = x
+	}
 	if len(files) == 0 {
-		return out, ctx.Err()
+		return out, every, ctx.Err()
 	}
 	needles := make([][]byte, len(ms))
 	for i, m := range ms {
 		needles[i] = m.needle
 	}
+	groups := groupNeedles(needles, nil)
 	hits := make([][]bool, len(files))
 	if err := forEach(ctx, len(files), func(buf *[]byte, i int) {
-		hits[i] = fileHits(ctx, files[i].path, needles, buf)
+		hits[i] = fileHits(ctx, files[i].path, needles, groups, buf)
 	}); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	// Each session's files, and the queries the prefilter found in any.
@@ -119,43 +127,37 @@ func scanTranscripts(ctx context.Context, dir string, ms []queryMatcher) ([][]sc
 	}
 	acted := make([][]bool, len(candidates))
 	if err := forEach(ctx, len(candidates), func(_ *[]byte, c int) {
-		acted[c] = sessionActed(ctx, files, byIndex[candidates[c]], hits, ms)
+		acted[c] = sessionActed(ctx, files, byIndex[candidates[c]], hits, ms, needles)
 	}); err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for c, si := range candidates {
-		s := sessions[si]
-		for _, i := range byIndex[si] {
-			if files[i].mod.After(s.lastActive) {
-				s.lastActive = files[i].mod
-			}
-		}
 		for q, ok := range acted[c] {
 			if ok {
-				out[q] = append(out[q], s)
+				out[q] = append(out[q], sessions[si])
 			}
 		}
 	}
-	return out, ctx.Err()
+	return out, every, ctx.Err()
 }
 
 // sessionActed reports, for each matcher, whether a session acted on its
-// query. fs are the session's files (its transcript first), hits what the
-// prefilter found in each. A scheduled-task run acts on nothing.
-func sessionActed(ctx context.Context, files []transcriptFile, fs []int, hits [][]bool, ms []queryMatcher) []bool {
+// query. fs are the session's files, hits what the prefilter found in each.
+// A scheduled-task run acts on nothing.
+func sessionActed(ctx context.Context, files []transcriptFile, fs []int, hits [][]bool, ms []queryMatcher, needles [][]byte) []bool {
 	acted := make([]bool, len(ms))
-	for n, i := range fs {
+	for _, i := range fs {
 		var want []int // queries in this file that aren't settled yet
 		for q, hit := range hits[i] {
 			if hit && !acted[q] {
 				want = append(want, q)
 			}
 		}
-		first := n == 0 && !files[i].sub
+		first := !files[i].sub // a session's own transcript tells a scheduled run
 		if len(want) == 0 && !first {
 			continue
 		}
-		scheduled := readTranscript(ctx, files[i].path, ms, want, first, acted)
+		scheduled := readTranscript(ctx, files[i].path, ms, needles, want, first, acted)
 		if scheduled {
 			return make([]bool, len(ms))
 		}
@@ -164,9 +166,12 @@ func sessionActed(ctx context.Context, files []transcriptFile, fs []int, hits []
 }
 
 // listTranscripts lists dir's sessions, from their transcripts, and their
-// files: each transcript, then its subagents' transcripts. Subagent files
-// whose session's transcript is gone are left out: the session can't be
-// resumed.
+// files: transcripts and subagent transcripts. A session id with a
+// transcript in two project folders is one session, resumed from its newest
+// transcript. Subagent files whose session has no transcript are left out:
+// the session can't be resumed. Older Claude Code versions wrote a subagent's
+// transcript as <project>/agent-<id>.jsonl; it counts for the session its
+// records name.
 func listTranscripts(dir string) ([]scannedSession, []transcriptFile) {
 	projects, err := os.ReadDir(dir)
 	if err != nil {
@@ -174,14 +179,22 @@ func listTranscripts(dir string) ([]scannedSession, []transcriptFile) {
 	}
 	var sessions []scannedSession
 	var files []transcriptFile
-	add := func(path string, session int, sub bool) bool {
+	byID := map[string]int{}
+	add := func(path string, session int, sub bool) {
 		info, err := os.Stat(path)
 		if err != nil || !info.Mode().IsRegular() {
-			return false
+			return
 		}
 		files = append(files, transcriptFile{path: path, session: session, sub: sub, mod: info.ModTime()})
-		return true
+		s := &sessions[session]
+		if mod := info.ModTime(); mod.After(s.lastActive) {
+			s.lastActive = mod
+		}
+		if mod := info.ModTime(); !sub && (s.path == "" || mod.After(s.pathMod)) {
+			s.path, s.pathMod = path, mod
+		}
 	}
+	var legacy []string
 	for _, p := range projects {
 		if !p.IsDir() {
 			continue
@@ -197,18 +210,70 @@ func listTranscripts(dir string) ([]scannedSession, []transcriptFile) {
 				continue
 			}
 			path := filepath.Join(pdir, name)
-			if !add(path, len(sessions), false) {
+			if strings.HasPrefix(name, "agent-") {
+				legacy = append(legacy, path)
 				continue
 			}
 			id := strings.TrimSuffix(name, ".jsonl")
+			si, ok := byID[id]
+			if !ok {
+				si = len(sessions)
+				byID[id] = si
+				sessions = append(sessions, scannedSession{id: id})
+			}
+			add(path, si, false)
 			subs, _ := filepath.Glob(filepath.Join(pdir, id, "subagents", "*.jsonl"))
 			for _, sp := range subs {
-				add(sp, len(sessions), true)
+				add(sp, si, true)
 			}
-			sessions = append(sessions, scannedSession{id: id, path: path})
 		}
 	}
-	return sessions, files
+	for _, path := range legacy {
+		if si, ok := byID[recordSessionID(path)]; ok {
+			add(path, si, true)
+		}
+	}
+	// A session whose transcripts couldn't be read has no path.
+	kept := sessions[:0]
+	remap := make([]int, len(sessions))
+	for i, x := range sessions {
+		remap[i] = -1
+		if x.path != "" {
+			remap[i] = len(kept)
+			kept = append(kept, x)
+		}
+	}
+	keptFiles := files[:0]
+	for _, f := range files {
+		if f.session = remap[f.session]; f.session >= 0 {
+			keptFiles = append(keptFiles, f)
+		}
+	}
+	return kept, keptFiles
+}
+
+// recordSessionID returns the sessionId in a transcript's first records, or
+// "" if there is none.
+func recordSessionID(path string) string {
+	f, err := os.Open(path)
+	if err != nil {
+		return ""
+	}
+	defer f.Close()
+	r := bufio.NewReader(f)
+	for range 20 {
+		line, err := r.ReadBytes('\n')
+		var rec struct {
+			SessionID string `json:"sessionId"`
+		}
+		if json.Unmarshal(line, &rec) == nil && rec.SessionID != "" {
+			return rec.SessionID
+		}
+		if err != nil {
+			return ""
+		}
+	}
+	return ""
 }
 
 // forEach runs f(i) for i in [0, n) on a few goroutines, each with its own
@@ -245,10 +310,10 @@ feed:
 	return err
 }
 
-// fileHits reports which needles (lowercase ASCII) the file has, in any ASCII
-// case, or nil if it has none or can't be read. An empty needle is in every
-// file. *buf is reused between calls.
-func fileHits(ctx context.Context, path string, needles [][]byte, buf *[]byte) []bool {
+// fileHits reports which needles (lowercase ASCII, grouped by groupNeedles)
+// the file has, in any ASCII case, or nil if it has none or can't be read. An
+// empty needle is in every file. *buf is reused between calls.
+func fileHits(ctx context.Context, path string, needles [][]byte, groups []*needleGroup, buf *[]byte) []bool {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil
@@ -265,7 +330,6 @@ func fileHits(ctx context.Context, path string, needles [][]byte, buf *[]byte) [
 		longest = max(longest, len(n))
 	}
 	hit := left < len(needles)
-	groups := groupNeedles(needles, nil)
 	if left > 0 {
 		if need := prefilterChunk + longest; len(*buf) < need {
 			*buf = make([]byte, need)
@@ -407,10 +471,12 @@ func containsFold(s, needle string) bool {
 
 // record is the part of a transcript line the scan reads.
 type record struct {
-	Type       string          `json:"type"`
-	IsMeta     bool            `json:"isMeta"`
-	Message    json.RawMessage `json:"message"`
-	Attachment struct {
+	Type   string `json:"type"`
+	IsMeta bool   `json:"isMeta"`
+	// A compaction summary quotes the earlier conversation; nobody typed it.
+	IsCompactSummary bool            `json:"isCompactSummary"`
+	Message          json.RawMessage `json:"message"`
+	Attachment       struct {
 		Type        string          `json:"type"`
 		CommandMode string          `json:"commandMode"`
 		Prompt      json.RawMessage `json:"prompt"`
@@ -427,7 +493,7 @@ type contentBlock struct {
 // want, and sets acted[q] for each query a line acted on. If first is set, it
 // also reads the first typed prompt, to tell a scheduled-task run, and
 // reports one as soon as it sees it. It stops once nothing is left to learn.
-func readTranscript(ctx context.Context, path string, ms []queryMatcher, want []int, first bool, acted []bool) (scheduled bool) {
+func readTranscript(ctx context.Context, path string, ms []queryMatcher, needles [][]byte, want []int, first bool, acted []bool) (scheduled bool) {
 	f, err := os.Open(path)
 	if err != nil {
 		return false
@@ -437,10 +503,6 @@ func readTranscript(ctx context.Context, path string, ms []queryMatcher, want []
 	var lower []byte
 	var lineHas []int
 	want = append([]int(nil), want...)
-	needles := make([][]byte, len(ms))
-	for i, m := range ms {
-		needles[i] = m.needle
-	}
 	groups := groupNeedles(needles, want)
 	lineFound := make([]bool, len(ms))
 	for n := 0; ; n++ {
@@ -509,7 +571,7 @@ func readTranscript(ctx context.Context, path string, ms []queryMatcher, want []
 func actedTexts(rec record) []string {
 	var out []string
 	switch {
-	case rec.Type == "user" && !rec.IsMeta:
+	case rec.Type == "user" && !rec.IsMeta && !rec.IsCompactSummary:
 		if t := typedText(strings.Join(userTexts(rec.Message), " ")); t != "" {
 			out = append(out, t)
 		}
@@ -545,7 +607,7 @@ func typedText(text string) string {
 		}
 		text = strings.Join(parts, " ")
 	}
-	if strings.Contains(text, continuedMarker) {
+	if strings.HasPrefix(text, continuedMarker) {
 		return ""
 	}
 	return text
