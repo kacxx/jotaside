@@ -114,8 +114,8 @@ under their labels, without the matching jots.
   slash command's arguments, but not the command's own text) or in the input
   of one of its tool calls, matched as above. jotaside's own lookups don't
   count: a Bash call whose command runs `jotaside find`, `search` or `show`,
-  or a call to one of its MCP tools (`mcp__jotaside__…`), is skipped
-  entirely, so a chat that only looked a key up isn't listed for it. Not read:
+  or a call to one of its MCP tools (`mcp__jotaside__…`, or `mcp__aside__…`
+  from before the rename), is skipped entirely, so a chat that only looked a key up isn't listed for it. Not read:
   `<system-reminder>` blocks, so memory and instruction files loaded into the
   chat; tool output; the agent's replies; the summary Claude Code writes when
   a chat runs out of context. Scheduled-task runs are left out. A subagent's

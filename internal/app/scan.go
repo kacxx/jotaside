@@ -494,10 +494,11 @@ type contentBlock struct {
 var jotasideLookup = regexp.MustCompile(`\bjotaside\s+(?:find|search|show)\b`)
 
 // isLookup reports whether a tool call only looked something up in jotaside:
-// a call to its MCP server, or a Bash command running jotaside find, search
-// or show. Such a call names the key but doesn't act on it (#35 D3).
+// a call to its MCP server (mcp__jotaside__*, or mcp__aside__* from before
+// the rename), or a Bash command running jotaside find, search or show. Such a
+// call names the key but doesn't act on it (#35 D3).
 func isLookup(b contentBlock) bool {
-	if strings.HasPrefix(b.Name, "mcp__jotaside__") {
+	if strings.HasPrefix(b.Name, "mcp__jotaside__") || strings.HasPrefix(b.Name, "mcp__aside__") {
 		return true
 	}
 	if b.Name != "Bash" {

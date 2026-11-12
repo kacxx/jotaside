@@ -443,6 +443,7 @@ func TestLookupsDontCount(t *testing.T) {
 		bash   = "c0000000-0000-4000-8000-00000000000c"
 		path   = "c1000000-0000-4000-8000-00000000000c"
 		mcp    = "d0000000-0000-4000-8000-00000000000d"
+		oldMCP = "d1000000-0000-4000-8000-00000000000d"
 		real   = "e0000000-0000-4000-8000-00000000000e"
 		sub    = "f0000000-0000-4000-8000-00000000000f"
 		search = "f1000000-0000-4000-8000-00000000000f"
@@ -451,6 +452,7 @@ func TestLookupsDontCount(t *testing.T) {
 		bash:   toolUseLine("Bash", `{"command":"jotaside find ABC-1"}`),
 		path:   toolUseLine("Bash", `{"command":"JOT_DB=/tmp/x.db /usr/local/bin/jotaside show 12 | grep ABC-1"}`),
 		mcp:    toolUseLine("mcp__jotaside__find", `{"query":"ABC-1"}`),
+		oldMCP: toolUseLine("mcp__aside__find", `{"query":"ABC-1"}`), // the server's name before the rename
 		search: toolUseLine("mcp__jotaside__search", `{"query":"ABC-1 cache"}`),
 		real:   toolUseLine("Bash", `{"command":"git checkout -b ABC-1-fix"}`),
 		sub:    toolUseLine("mcp__tracker__getIssue", `{"key":"ABC-1"}`),
@@ -483,6 +485,9 @@ func TestIsLookup(t *testing.T) {
 		{"Bash", `{"command":"jotasidefind ABC-1"}`, false},
 		{"mcp__jotaside__find", `{"query":"ABC-1"}`, true},
 		{"mcp__jotaside__activity", `{"id":3}`, true},
+		{"mcp__aside__find", `{"query":"ABC-1"}`, true},
+		{"mcp__aside__show", `{"id":3}`, true},
+		{"mcp__asides__find", `{"query":"ABC-1"}`, false},
 		{"mcp__other__find", `{"query":"ABC-1"}`, false},
 		{"Grep", `{"pattern":"jotaside find ABC-1"}`, false},
 	} {
