@@ -105,6 +105,7 @@ an apostrophe to check quoting.
 
 ```sh
 export JOT_DB="$(mktemp -d)/jot.db"
+export CLAUDE_CONFIG_DIR="$(dirname "$JOT_DB")/claude"   # no real transcripts
 start="$(dirname "$JOT_DB")/proj dir's"; mkdir -p "$start/wt"
 tr="$(dirname "$JOT_DB")/c1.jsonl"
 jq -nc --arg c "$start" '{type:"user",cwd:$c}' > "$tr"
@@ -120,16 +121,17 @@ bin/jotaside done 2 >/dev/null
 bin/jotaside find sup-4821
 ```
 
-Expected, newest session first. Jot #2 is marked `(done)`, Codex has no `cd`,
-and the Claude `cd` is the starting folder, not `wt`:
+Expected, newest session first, each headed by the query. Jot #2 is marked
+`(done)`, Codex has no `cd`, and the Claude `cd` is the starting folder, not
+`wt`:
 
 ```
-SUP-4821 retry in codex
+sup-4821
   codex · 1 jot · last today (#3)
   #3    today  SUP-4821 retry in codex
   codex resume x1
 
-SUP-4821 token TTL
+sup-4821
   claude · 2 jots · last today (#2)
   #1    today  session: SUP-4821 token TTL
   #2    today  SUP-4821 needs a backend ticket  (done)
@@ -145,9 +147,21 @@ Then check that the printed `cd` works, and the other commands:
 sh -c "$(bin/jotaside sessions | grep 'claude --resume' | sed 's/ && claude.*/ \&\& pwd/')"
 # /…/proj dir's
 bin/jotaside sessions -n 1     # only the Codex session
-bin/jotaside find nope         # No jots match "nope".
+bin/jotaside find nope         # No sessions or jots match "nope".
 bin/jotaside find "  "         # jotaside: empty search query (exit 1)
 ```
+
+Then the transcript scan, on the synthetic transcripts in `testdata/transcripts`:
+
+```sh
+mkdir -p "$CLAUDE_CONFIG_DIR" && cp -R testdata/transcripts "$CLAUDE_CONFIG_DIR/projects"
+bin/jotaside find ABC-1        # two sessions, 1111… (/work/cli) and 2222… (/work/desktop)
+bin/jotaside find SUP-4821     # adds 2222…, from its subagent's SUP-4821_cache.go
+bin/jotaside find CTX-3        # No sessions or jots match "CTX-3". (loaded context only)
+```
+
+Each scanned session shows `claude · last today` and a `cd /work/… && claude
+--resume …` line; the scheduled run 3333… is never listed.
 
 Against your real database (read-only), check that each printed resume command
 points at a session that exists: Claude Code sessions are

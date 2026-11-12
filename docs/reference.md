@@ -66,19 +66,26 @@ with your next message anyway (see [cursor.md](cursor.md)).
 ## Finding a session
 
 Every jot captured by a hook records the agent's session id. `jotaside find`
-groups the jots that match a query by session, so you can get back to the chat
+groups the jots that match a query by session, and adds the Claude Code
+sessions whose transcripts show work on it, so you can get back to the chat
 where you worked on something:
 
 ```
 $ jotaside find SUP-4821
-SUP-4821 token TTL investigation
+SUP-4821
   claude · api@main · 3 jots · last 2d (#18)
   #12   5d     session: SUP-4821 token TTL investigation
   #18   2d     SUP-4821 needs a backend ticket
   cd /Users/you/code/api && claude --resume 0f3c9a…
+
+SUP-4821
+  claude · last 4d
+  cd /Users/you/code/api && claude --resume 7d21e0…
 ```
 
-`jotaside sessions` lists recent sessions the same way, without the matching jots.
+Each session is headed by the query, since it may not be the session's label;
+the session's matching jots follow. `jotaside sessions` lists recent sessions
+under their labels, without the matching jots.
 
 - **Label a session** by jotting `>> session: <why>` in it, for example
   `>> session: SUP-4821 token TTL investigation`. The newest `session:` jot
@@ -98,8 +105,27 @@ SUP-4821 token TTL investigation
   There is no list of ticket prefixes to configure and no tag table: the
   filter runs on the matching jots at query time.
 - Done jots are listed with `(done)`, as in `jotaside search`.
-- **Only chats with a jot in them are listed.** A chat where you never jotted
-  doesn't appear, unless the hook labelled it
+- **Claude Code transcripts are scanned** (`~/.claude/projects`, or
+  `$CLAUDE_CONFIG_DIR/projects`) each time `find` runs, terminal and Desktop
+  sessions alike. A session is listed if the query is in something you typed
+  (a prompt, including one sent while the agent was busy; a `!` command; a
+  slash command's arguments, but not the command's own text) or in the input
+  of one of its tool calls, matched as above. Not read:
+  `<system-reminder>` blocks, so memory and instruction files loaded into the
+  chat; tool output; the agent's replies; the summary Claude Code writes when
+  a chat runs out of context. Scheduled-task runs are left out. A subagent's
+  transcript (`<session>/subagents/*.jsonl`) counts for the session that
+  started it; if only its subagents' files are left, the session can't be
+  resumed and isn't listed. A session found both ways is listed once, with
+  its jots; one found only in its transcript shows `claude · last <age>`
+  (from the transcript's last change) and its resume command, but no
+  `jotaside open` line even from Claude Desktop: the link is built from a
+  session's jots, and `jotaside open` takes a jot. Sessions are ordered by
+  their last activity, jot or transcript, newest first, and `last` shows it.
+  On a Mac with 2.3 GB of transcripts, a `find` took about 1 s with the
+  files in the disk cache (checked 2026-11-12, on the change in #35).
+- **Codex and Cursor chats are found only by their jots.** A chat where you
+  never jotted doesn't appear, unless the hook labelled it
   [automatically](#automatic-labels). Starting a ticket's chat with a
   `session:` jot makes it findable in any agent.
 - Jots from `jotaside add` have no session. `find` lists matching ones under

@@ -58,7 +58,8 @@ var commands = []struct{ name, usage string }{
 	{"activity", `  jotaside activity <id>        what a jot's own session did after it (Claude Code, Claude Desktop)`},
 	{"open", `  jotaside open <id>            open the chat a jot came from (macOS, Windows; Claude Desktop, Codex app)`},
 	{"search", `  jotaside search <query...>    search all jots (substring, case-insensitive)`},
-	{"find", `  jotaside find <query...>      sessions with a jot matching the query, and how to resume them`},
+	{"find", `  jotaside find <query...>      sessions with a jot matching the query, or Claude Code sessions
+                                whose prompts or tool calls name it, and how to resume them`},
 	{"sessions", `  jotaside sessions [-n N]      recent sessions with their label (default 10, 0 = all)`},
 	{"done", `  jotaside done <id>... [--note "why"]  mark jots as done, optionally recording why`},
 	{"check", `  jotaside check <id>...        record when open jots were last looked at and left open`},
@@ -212,6 +213,8 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 	if desktopSessionsDir != "" {
 		svc.SetDesktopSessionsDir(desktopSessionsDir)
 	}
+	// find (and the MCP find tool) scan Claude Code's transcripts.
+	svc.SetTranscriptsDir(app.ClaudeProjectsDir())
 
 	switch cmd {
 	case "add":
@@ -311,7 +314,7 @@ func run(args []string, stdin io.Reader, stdout io.Writer) error {
 		}
 		svc.AddSessionOpenURLs(ss)
 		if len(ss) == 0 && len(loose) == 0 {
-			fmt.Fprintf(stdout, "No jots match %q.\n", q)
+			fmt.Fprintf(stdout, "No sessions or jots match %q.\n", q)
 		}
 		for i, s := range ss {
 			if i > 0 {
@@ -757,20 +760,37 @@ func checkedMark(e app.Entry) string {
 	return "  (checked " + when + ")"
 }
 
-// printSession prints a session's label, a summary line, the given jots, the
-// command to resume it and, if the chat has a link, the command to open it.
+// printSession prints a session's label (for find, the query), a summary
+// line, the given jots, the command to resume it and, if the chat has a link,
+// the command to open it.
 func printSession(w io.Writer, s app.Session, jots []app.Entry, q string) {
-	fmt.Fprintln(w, firstLine(s.LabelText(), 80))
-	latest := s.Latest()
+	header := s.LabelText()
+	if q != "" {
+		// find lists a session for the query, which may not be its label.
+		header = strings.TrimSpace(q)
+	}
+	fmt.Fprintln(w, firstLine(header, 80))
 	parts := []string{s.Source}
-	if where := location(latest); where != "" {
-		parts = append(parts, where)
+	if len(s.Jots) == 0 {
+		// Found in its transcript, with no jot.
+		parts = append(parts, "last "+age(s.LastActive, now()))
+	} else {
+		latest := s.Latest()
+		if where := location(latest); where != "" {
+			parts = append(parts, where)
+		}
+		count := fmt.Sprintf("%d jots", len(s.Jots))
+		if len(s.Jots) == 1 {
+			count = "1 jot"
+		}
+		// Last activity, which for find can be the transcript's, after the
+		// newest jot; the list is in this order.
+		last := s.LastActive
+		if last.IsZero() {
+			last = latest.CreatedAt
+		}
+		parts = append(parts, count, fmt.Sprintf("last %s (#%d)", age(last, now()), latest.ID))
 	}
-	count := fmt.Sprintf("%d jots", len(s.Jots))
-	if len(s.Jots) == 1 {
-		count = "1 jot"
-	}
-	parts = append(parts, count, fmt.Sprintf("last %s (#%d)", age(latest.CreatedAt, now()), latest.ID))
 	fmt.Fprintln(w, "  "+strings.Join(parts, " · "))
 	for _, e := range jots {
 		status := ""
@@ -782,8 +802,8 @@ func printSession(w io.Writer, s app.Session, jots []app.Entry, q string) {
 	if cmd := s.ResumeCommand(); cmd != "" {
 		fmt.Fprintln(w, "  "+cmd)
 	}
-	if app.OpenableURL(s.OpenURL) {
-		fmt.Fprintf(w, "  jotaside open %d\n", latest.ID)
+	if app.OpenableURL(s.OpenURL) && len(s.Jots) > 0 {
+		fmt.Fprintf(w, "  jotaside open %d\n", s.Latest().ID)
 	}
 }
 

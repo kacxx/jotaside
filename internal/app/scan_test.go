@@ -1,0 +1,312 @@
+package app
+
+import (
+	"context"
+	"os"
+	"path/filepath"
+	"slices"
+	"strings"
+	"testing"
+	"time"
+)
+
+// Synthetic transcripts in testdata/transcripts (a Claude Code projects
+// directory).
+const (
+	cliSessionID    = "11111111-0000-4000-8000-000000000001"
+	deskSessionID   = "22222222-0000-4000-8000-000000000002"
+	schedSessionID  = "33333333-0000-4000-8000-000000000003"
+	readerSessionID = "44444444-0000-4000-8000-000000000004"
+)
+
+func transcriptsFixture(t *testing.T) string {
+	t.Helper()
+	dir, err := filepath.Abs(filepath.Join("..", "..", "testdata", "transcripts"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return dir
+}
+
+func scanService(t *testing.T) *Service {
+	t.Helper()
+	svc := sessionService(t)
+	svc.SetTranscriptsDir(transcriptsFixture(t))
+	return svc
+}
+
+func sessionIDs(ss []Session) []string {
+	var ids []string
+	for _, s := range ss {
+		ids = append(ids, s.ID)
+	}
+	slices.Sort(ids)
+	return ids
+}
+
+func TestFindScansTranscripts(t *testing.T) {
+	ctx := context.Background()
+	svc := scanService(t)
+	for _, tc := range []struct {
+		q    string
+		want []string
+	}{
+		// Two keys in one typed prompt; a lowercase branch in a tool call;
+		// slash-command arguments; a tool call's nested input; a subagent's.
+		{"ABC-1", []string{cliSessionID, deskSessionID}},
+		{"ABC-2", []string{cliSessionID, deskSessionID}},
+		{"abc-2", []string{cliSessionID, deskSessionID}},
+		// Whole word: "_" ends a key; a longer key or prefix doesn't match.
+		{"SUP-4821", []string{deskSessionID}},
+		{"SUP-482", nil},
+		// Never read: loaded context, attachments, tool output, the model's
+		// text, meta records, request blobs, harness output, a summary of an
+		// earlier conversation, the slash command's own text.
+		{"CTX-3", nil},
+		{"LOAD-8", nil},
+		{"OUT-7", nil},
+		{"REPLY-5", nil},
+		{"META-4", nil},
+		{"SYS-5", nil},
+		{"LOCAL-6", nil},
+		{"SUM-6", nil},
+		{"CMD-9", nil},
+		// Any other query is a substring, any case.
+		{"Cache Bug", []string{deskSessionID}},
+		// A prompt queued while the agent was busy, and a ! command, were
+		// typed; a task notification and a command's output weren't.
+		{"QUEUE-1", []string{cliSessionID}},
+		{"BASH-3", []string{cliSessionID}},
+		{"TASK-2", nil},
+		{"STDOUT-4", nil},
+		// A session whose transcript is gone can't be resumed.
+		{"ORPHAN-1", nil},
+	} {
+		ss, loose, err := svc.Find(ctx, tc.q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := sessionIDs(ss); !slices.Equal(got, tc.want) {
+			t.Errorf("find %q: got %v, want %v", tc.q, got, tc.want)
+		}
+		if len(loose) != 0 {
+			t.Errorf("find %q: loose %v", tc.q, loose)
+		}
+	}
+}
+
+func TestFindScannedSessionFields(t *testing.T) {
+	svc := scanService(t)
+	ss, _, err := svc.Find(context.Background(), "ABC-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, s := range ss {
+		if s.Source != "claude" || len(s.Jots) != 0 || len(s.Matches) != 0 || s.LastActive.IsZero() {
+			t.Errorf("scanned session: %+v", s)
+		}
+		want := map[string]string{cliSessionID: "/work/cli", deskSessionID: "/work/desktop"}[s.ID]
+		if s.Cwd != want {
+			t.Errorf("%s: cwd %q, want %q", s.ID, s.Cwd, want)
+		}
+		if !strings.HasPrefix(s.ResumeCommand(), "cd "+want+" && claude --resume "+s.ID) {
+			t.Errorf("%s: resume %q", s.ID, s.ResumeCommand())
+		}
+	}
+}
+
+func TestFindMergesJotsAndTranscripts(t *testing.T) {
+	ctx := context.Background()
+	svc := scanService(t)
+	jot(t, svc, "claude", cliSessionID, "/work/cli", "session: ABC-1") // #1
+	jot(t, svc, "codex", cliSessionID, "/work/cli", "ABC-1 in codex")  // #2: another agent's session
+	ss, _, err := svc.Find(ctx, "ABC-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ss) != 3 {
+		t.Fatalf("got %d sessions, want 3: %+v", len(ss), ss)
+	}
+	n := 0
+	for _, s := range ss {
+		if s.Source == "claude" && s.ID == cliSessionID {
+			n++
+			if len(s.Jots) != 1 || len(s.Matches) != 1 || s.Matches[0].ID != 1 {
+				t.Errorf("labelled session lost its jots: %+v", s)
+			}
+		}
+	}
+	if n != 1 {
+		t.Fatalf("labelled and scanned session listed %d times", n)
+	}
+}
+
+func TestFindOrdersByLastActive(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	if err := os.CopyFS(dir, os.DirFS(transcriptsFixture(t))); err != nil {
+		t.Fatal(err)
+	}
+	old, recent := time.Now().Add(-48*time.Hour), time.Now().Add(-time.Hour)
+	touch := func(path string, at time.Time) {
+		if err := os.Chtimes(filepath.Join(dir, path), at, at); err != nil {
+			t.Fatal(err)
+		}
+	}
+	touch(filepath.Join("-work-cli", cliSessionID+".jsonl"), recent)
+	touch(filepath.Join("-work-desktop", deskSessionID+".jsonl"), old)
+	// A subagent that ran later makes its session more recent.
+	touch(filepath.Join("-work-desktop", deskSessionID, "subagents", "agent-a1.jsonl"), time.Now())
+
+	svc := sessionService(t)
+	svc.SetTranscriptsDir(dir)
+	svc.now = time.Now
+	jot(t, svc, "codex", "c1", "/work", "ABC-1 from codex") // now, newest
+	ss, _, err := svc.Find(ctx, "ABC-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, s := range ss {
+		got = append(got, s.ID)
+	}
+	want := []string{"c1", deskSessionID, cliSessionID}
+	if !slices.Equal(got, want) {
+		t.Fatalf("order %v, want %v", got, want)
+	}
+}
+
+func TestFindWithoutTranscripts(t *testing.T) {
+	svc := sessionService(t)
+	svc.SetTranscriptsDir(filepath.Join(t.TempDir(), "missing"))
+	jot(t, svc, "claude", "s1", "/work", "ABC-1 note")
+	ss, _, err := svc.Find(context.Background(), "ABC-1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(ss) != 1 || ss[0].ID != "s1" {
+		t.Fatalf("got %+v", ss)
+	}
+}
+
+func TestFindScanCancelled(t *testing.T) {
+	svc := scanService(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, _, err := svc.Find(ctx, "ABC-1"); err == nil {
+		t.Fatal("want an error from a cancelled find")
+	}
+}
+
+func TestScanQueriesJSONWouldEscape(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "-p", "55555555-0000-4000-8000-000000000005.jsonl")
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	line := `{"type":"user","message":{"role":"user","content":"fix the \"quoted name\" bug\nand C:\\temp too"}}` + "\n"
+	if err := os.WriteFile(path, []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	svc := sessionService(t)
+	svc.SetTranscriptsDir(dir)
+	for _, q := range []string{`"quoted name"`, `C:\temp`, "bug\nand"} {
+		ss, _, err := svc.Find(context.Background(), q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(ss) != 1 {
+			t.Errorf("find %q: got %d sessions, want 1", q, len(ss))
+		}
+	}
+}
+
+func TestContainsFoldASCII(t *testing.T) {
+	for _, tc := range []struct {
+		hay, needle string
+		want        bool
+	}{
+		{"feature/ABC-2-fix", "abc-2", true},
+		{"no match here", "abc", false},
+		{"Ünïcode ABC", "abc", true},
+		{"ÄBC", "äbc", false}, // like SQLite's LIKE: ASCII letters only
+		{"anything", "", true},
+	} {
+		if got := containsFold(tc.hay, strings.ToLower(tc.needle)); got != tc.want {
+			t.Errorf("containsFold(%q, %q) = %v", tc.hay, tc.needle, got)
+		}
+	}
+}
+
+func TestPrefilterChunkBoundary(t *testing.T) {
+	// A key that straddles two reads of the prefilter is still found.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "66666666-0000-4000-8000-000000000006.jsonl")
+	pad := strings.Repeat("x", prefilterChunk-len(`{"type":"user","message":{"role":"user","content":"`)-3)
+	line := `{"type":"user","message":{"role":"user","content":"` + pad + ` ABC-77 end"}}` + "\n"
+	if err := os.WriteFile(path, []byte(line), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var buf []byte
+	got := fileHits(context.Background(), path, [][]byte{[]byte("abc-77"), []byte("zzz"), []byte("end\"}")}, &buf)
+	if !slices.Equal(got, []bool{true, false, true}) {
+		t.Fatalf("got %v", got)
+	}
+	if len(buf) < prefilterChunk {
+		t.Fatal("the buffer isn't kept for the next file")
+	}
+	if got := fileHits(context.Background(), path, [][]byte{[]byte("zzz")}, &buf); got != nil {
+		t.Fatalf("no needle found: got %v", got)
+	}
+}
+
+// FindEach reads the transcripts once for many queries and returns what Find
+// returns for each.
+func TestFindEach(t *testing.T) {
+	ctx := context.Background()
+	svc := scanService(t)
+	jot(t, svc, "claude", cliSessionID, "/work/cli", "session: ABC-1")
+	jot(t, svc, "cli", "", "/work", "ABC-2 from the terminal")
+	qs := []string{"ABC-1", "ABC-2", "SUP-4821", "CTX-3", "QUEUE-1"}
+	found, err := svc.FindEach(ctx, qs)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(found) != len(qs) {
+		t.Fatalf("got %d results for %d queries", len(found), len(qs))
+	}
+	for i, q := range qs {
+		ss, loose, err := svc.Find(ctx, q)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if a, b := sessionIDs(found[i].Sessions), sessionIDs(ss); !slices.Equal(a, b) {
+			t.Errorf("%s: FindEach %v, Find %v", q, a, b)
+		}
+		if len(found[i].Loose) != len(loose) {
+			t.Errorf("%s: FindEach %d loose, Find %d", q, len(found[i].Loose), len(loose))
+		}
+	}
+	if _, err := svc.FindEach(ctx, []string{"ABC-1", " "}); err == nil {
+		t.Error("an empty query should be an error")
+	}
+}
+
+func TestMarkNeedles(t *testing.T) {
+	needles := [][]byte{[]byte("abc-1"), []byte("abc-12"), []byte("abd-3"), []byte("x"), nil, []byte("zz-9")}
+	groups := groupNeedles(needles, nil)
+	if len(groups) != 4 { // "abc-", "abd-", "x", "zz-9"; the empty needle in none
+		t.Fatalf("groups: %d", len(groups))
+	}
+	found := make([]bool, len(needles))
+	if n := markNeedles([]byte("see abc-12 and abd-3, x"), needles, groups, found); n != 4 {
+		t.Fatalf("set %d", n)
+	}
+	if want := []bool{true, true, true, true, false, false}; !slices.Equal(found, want) {
+		t.Fatalf("found %v, want %v", found, want)
+	}
+	// Already found ones aren't counted again.
+	if n := markNeedles([]byte("abc-1 zz-9"), needles, groups, found); n != 1 || !found[5] {
+		t.Fatalf("second window: set %d, found %v", n, found)
+	}
+}

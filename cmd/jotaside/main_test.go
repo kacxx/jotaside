@@ -158,7 +158,7 @@ func TestFindAndSessions(t *testing.T) {
 	}
 	got := sh("find", "sup-4821")
 	for _, want := range []string{
-		"SUP-4821 token TTL\n",
+		"sup-4821\n", // the query, not the session's label (#35 D5)
 		"  claude · 2 jots · last 3d (#2)\n",
 		"  #1    3d     session: SUP-4821 token TTL\n",
 		"  #2    3d     SUP-4821 needs a backend ticket  (done)\n",
@@ -169,12 +169,73 @@ func TestFindAndSessions(t *testing.T) {
 			t.Fatalf("find output missing %q:\n%s", want, got)
 		}
 	}
-	if got := sh("find", "nope"); got != "No jots match \"nope\".\n" {
+	if got := sh("find", "nope"); got != "No sessions or jots match \"nope\".\n" {
 		t.Fatalf("find no match: %q", got)
 	}
 	got = sh("sessions")
 	if !strings.HasPrefix(got, "SUP-4821 token TTL\n  claude · 2 jots · last 3d (#2)\n  "+resumeAPI+"\n") {
 		t.Fatalf("sessions: %q", got)
+	}
+}
+
+// find lists the Claude Code sessions whose transcripts acted on a key, once
+// each, with the labelled ones (#35).
+func TestFindScansTranscripts(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "jot.db")
+	t.Setenv("JOT_DB", db)
+	config := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", config)
+	if err := os.CopyFS(filepath.Join(config, "projects"), os.DirFS(filepath.Join("..", "..", "testdata", "transcripts"))); err != nil {
+		t.Fatal(err)
+	}
+	const cli, desk = "11111111-0000-4000-8000-000000000001", "22222222-0000-4000-8000-000000000002"
+	svc, err := app.Open(db, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Capture(context.Background(), app.CaptureRequest{Text: "session: ABC-2 work", Source: "claude", SessionID: cli, Cwd: "/work/cli"}); err != nil {
+		t.Fatal(err)
+	}
+	svc.Close()
+	var out bytes.Buffer
+	if err := run([]string{"find", "ABC-1"}, nil, &out); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	for _, want := range []string{
+		"ABC-1\n  claude · 1 jot · last today (#1)\n",
+		"ABC-1\n  claude · last today\n",
+		"claude --resume " + cli + "\n",
+		"claude --resume " + desk + "\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("find output missing %q:\n%s", want, got)
+		}
+	}
+	// The jotted session's transcript changed after its jot: it shows that.
+	old := now
+	now = func() time.Time { return time.Now().AddDate(0, 0, 3) }
+	t.Cleanup(func() { now = old })
+	future := time.Now().AddDate(0, 0, 2)
+	if err := os.Chtimes(filepath.Join(config, "projects", "-work-cli", cli+".jsonl"), future, future); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := run([]string{"find", "ABC-1"}, nil, &out); err != nil {
+		t.Fatal(err)
+	}
+	if want := "ABC-1\n  claude · 1 jot · last 1d (#1)\n"; !strings.HasPrefix(out.String(), want) {
+		t.Errorf("newest activity first, with its age: want prefix %q:\n%s", want, out.String())
+	}
+	if n := strings.Count(got, cli); n != 1 {
+		t.Errorf("session listed %d times:\n%s", n, got)
+	}
+	if strings.Contains(got, "ABC-2 work") || strings.Contains(got, "33333333") {
+		t.Errorf("label or scheduled run in the output:\n%s", got)
+	}
+	out.Reset()
+	if err := run([]string{"find", "CTX-3"}, nil, &out); err != nil || out.String() != "No sessions or jots match \"CTX-3\".\n" {
+		t.Errorf("key only in loaded context: %q %v", out.String(), err)
 	}
 }
 
@@ -778,7 +839,7 @@ func TestCLIDoneSeveralWithNote(t *testing.T) {
 	if got, err := sh("done", "1"); err != nil || got != "#1 already done\n" {
 		t.Fatalf("done again: %q %v", got, err)
 	}
-	if got, _ := sh("find", "wiki"); strings.Contains(got, "No jots match") {
+	if got, _ := sh("find", "wiki"); strings.Contains(got, "No sessions or jots match") {
 		t.Fatalf("find by note: %q", got)
 	}
 	// Re-running with a note replaces it; flags may come first.
@@ -1160,12 +1221,12 @@ func TestUsageFromCommands(t *testing.T) {
 // or of the jot text. "add -h some text" prints help and saves nothing.
 func TestHelpLaterIsData(t *testing.T) {
 	t.Setenv("JOT_DB", filepath.Join(t.TempDir(), "jot.db"))
-	for _, cmd := range []string{"find", "search"} {
+	for cmd, nothing := range map[string]string{"find": "No sessions or jots", "search": "No jots"} {
 		var out bytes.Buffer
 		if err := run([]string{cmd, "foo", "--help"}, nil, &out); err != nil {
 			t.Fatal(err)
 		}
-		if want := "No jots match \"foo --help\".\n"; out.String() != want {
+		if want := nothing + " match \"foo --help\".\n"; out.String() != want {
 			t.Fatalf("%s foo --help: got %q, want %q", cmd, out.String(), want)
 		}
 	}

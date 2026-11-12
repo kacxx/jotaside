@@ -36,6 +36,10 @@ worklog brief                     # every open item with its sessions
   jotaside's `find` for each work item the line names. A Claude Code session
   is printed with its resume command. A stamp with no Claude Code transcript
   is looked up among jotaside's sessions, which is where a Cursor chat is.
+  `find` reads every Claude Code transcript, so `show` and `brief` look up all
+  their items' work items in one read: on a Mac with 2.3 GB of transcripts, a
+  `brief` with 76 open items naming 54 keys took about 4 s, against about
+  100 s with one `find` per key (checked 2026-11-12, on the change in #35).
 
 ## When it won't write
 

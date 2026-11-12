@@ -253,6 +253,7 @@ type caller struct {
 	file, claude    string
 	session, cursor string // the Claude Code and Cursor session IDs in the environment
 	find            func(context.Context, string) ([]app.Session, []app.Entry, error)
+	findEach        func(context.Context, []string) ([]app.Found, error)
 	sessions        func(context.Context) ([]app.Session, error)
 }
 
@@ -267,6 +268,7 @@ func (c caller) run(t *testing.T, args ...string) (string, string, int) {
 		Home:     t.TempDir(),
 		Now:      func() time.Time { return time.Date(2026, 9, 3, 10, 0, 0, 0, time.UTC) },
 		Find:     c.find,
+		FindEach: c.findEach,
 		Sessions: c.sessions,
 	}
 	var out, errb bytes.Buffer
@@ -358,6 +360,47 @@ func TestShowFallsBackToJotaside(t *testing.T) {
 	}
 	if !strings.Contains(out, "claude --resume "+sessionB) {
 		t.Errorf("no resume command for the fallback session:\n%s", out)
+	}
+}
+
+// brief asks for every key in one FindEach, which reads the transcripts once,
+// instead of a Find per key (#35).
+func TestBriefFindsKeysAtOnce(t *testing.T) {
+	file, claude, _ := repo(t)
+	find := func(_ context.Context, q string) ([]app.Session, []app.Entry, error) {
+		t.Errorf("Find(%q) called; want FindEach", q)
+		return nil, nil, nil
+	}
+	var calls [][]string
+	findEach := func(_ context.Context, qs []string) ([]app.Found, error) {
+		calls = append(calls, qs)
+		out := make([]app.Found, len(qs))
+		for i, q := range qs {
+			if q == "ABC-123" {
+				out[i].Sessions = []app.Session{{Source: "claude", ID: sessionB, Cwd: "/work/x"}}
+			}
+		}
+		return out, nil
+	}
+	out, _, code := caller{file: file, claude: claude, find: find, findEach: findEach}.run(t, "brief")
+	if code != 0 {
+		t.Fatalf("brief: code %d", code)
+	}
+	if len(calls) != 1 {
+		t.Fatalf("FindEach called %d times, want once", len(calls))
+	}
+	seen := map[string]bool{}
+	for _, k := range calls[0] {
+		if seen[k] {
+			t.Errorf("key %s asked for twice: %v", k, calls[0])
+		}
+		seen[k] = true
+	}
+	if !seen["ABC-123"] {
+		t.Errorf("keys %v lack ABC-123", calls[0])
+	}
+	if n := strings.Count(out, "ABC-123: cd /work/x && claude --resume "+sessionB); n != 2 {
+		t.Errorf("want the session on both open items naming ABC-123, got %d:\n%s", n, out)
 	}
 }
 

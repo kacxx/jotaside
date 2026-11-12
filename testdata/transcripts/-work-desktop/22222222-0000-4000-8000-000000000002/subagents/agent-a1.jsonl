@@ -1,0 +1,3 @@
+{"type":"user","message":{"role":"user","content":"Look into the cache bug."},"isSidechain":true,"cwd":"/work/desktop"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t","name":"Read","input":{"file_path":"/work/desktop/SUP-4821_cache.go"}}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t","name":"Grep","input":{"pattern":"ABC-2"}}]}}

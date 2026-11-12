@@ -224,7 +224,8 @@ is `jotaside promote`, which posts to GitHub through your `gh` login, after aski
   and what the agent had just said when you jotted it, and creates it in that
   repo when you say yes. (`promote` always asks first.)
 - **Friday.** Someone asks about SUP-4821. `jotaside find SUP-4821` lists the
-  chats where you jotted about it, with the command to reopen each one.
+  chats where you jotted about it or worked on it, with the command to reopen
+  each one.
 
 ## Using jotaside
 
@@ -271,15 +272,20 @@ review` above); jotaside reads it from the transcript when listing the inbox.
 ### Get back to a chat
 
 Every jot made in an agent remembers its chat. `jotaside find` shows the chats
-where you jotted about something, and prints the command to reopen each one:
+where you jotted about something or, in Claude Code, worked on it, and prints
+the command to reopen each one:
 
 ```
 $ jotaside find SUP-4821
-SUP-4821 token TTL investigation
+SUP-4821
   claude · api@main · 2 jots · last 2d (#12)
   #11   2d     session: SUP-4821 token TTL investigation
   cd /Users/you/code/api && claude --resume 0f3c9a…
   jotaside open 12
+
+SUP-4821
+  claude · last 4d
+  cd /Users/you/code/api && claude --resume 7d21e0…
 
 Not in a session:
 #14   2026-10-04 18:03  SUP-4821 needs a backend ticket  [api@main]
@@ -290,7 +296,14 @@ jotaside find SUP-4821         # chats that mention it (ticket keys match as who
 jotaside sessions              # your recent chats and their labels
 ```
 
-Only chats with a jot in them can be found. In Claude Code, a chat whose first
+`find` also reads Claude Code's transcripts, so it lists a Claude Code chat
+(terminal or Desktop) where you typed the key or one of the agent's tool calls
+used it, even with no jot in it, like the second chat above (such a chat gets a
+resume command but no `jotaside open`, since that opens a jot's chat). Tool output and
+the memory and instruction files loaded into a chat don't count, and neither
+do scheduled tasks; a subagent's work counts for the chat that started it.
+
+Codex and Cursor chats are found only by their jots. In Claude Code, a chat whose first
 prompt names a work item gets one automatically (in Cursor, the first prompt
 that names one): a ticket key (`SUP-4821`),
 `owner/repo#N`, or a GitHub issue or pull request link, saved as
@@ -395,7 +408,7 @@ jotaside, so the skill matches the binary.
 | `jotaside inbox [-n N] [--older D]` | Open jots, newest first (default 20, `-n 0` for all) |
 | `jotaside show <id>` | One jot with its context |
 | `jotaside search <query>` | Search all jots |
-| `jotaside find <query>` | Chats with a matching jot, and how to resume them |
+| `jotaside find <query>` | Chats with a matching jot or Claude Code chats that worked on it, and how to resume them |
 | `jotaside open <id>` | Open the chat a jot came from (macOS and Windows; Claude Desktop and Codex app jots) |
 | `jotaside sessions [-n N]` | Recent chats with their labels (default 10) |
 | `jotaside activity <id>` | What a jot's own chat did after it (Claude Code and Claude Desktop jots) |

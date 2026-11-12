@@ -32,6 +32,9 @@ type Service struct {
 	now   func() time.Time
 	// desktop finds Claude Desktop's session files, for open links.
 	desktop desktopLinks
+	// transcripts is Claude Code's projects directory, which Find scans; ""
+	// (the default) skips the scan. See SetTranscriptsDir.
+	transcripts string
 }
 
 // New wraps an open store.

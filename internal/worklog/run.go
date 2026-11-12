@@ -52,8 +52,11 @@ type Env struct {
 	Home   string
 	// Now is the clock, for the dates add and close write; nil means time.Now.
 	Now func() time.Time
-	// Find and Sessions are jotaside's; nil when its database isn't there.
+	// Find, FindEach and Sessions are jotaside's; nil when its database
+	// isn't there. FindEach finds many keys in one read of the transcripts;
+	// without it, each key is a Find.
 	Find     func(ctx context.Context, q string) ([]app.Session, []app.Entry, error)
+	FindEach func(ctx context.Context, qs []string) ([]app.Found, error)
 	Sessions func(ctx context.Context) ([]app.Session, error)
 }
 
@@ -79,7 +82,7 @@ func run(ctx context.Context, cmd string, args []string, env Env, stdout, stderr
 	if claude == "" {
 		claude = filepath.Join(env.Home, ".claude")
 	}
-	look := &Lookup{Transcripts: filepath.Join(claude, "projects"), Find: env.Find, Sessions: env.Sessions}
+	look := &Lookup{Transcripts: filepath.Join(claude, "projects"), Find: env.Find, FindEach: env.FindEach, Sessions: env.Sessions}
 	session := env.Getenv("CLAUDE_CODE_SESSION_ID")
 	if stampFact(session) == "" {
 		session = env.Getenv("CURSOR_CONVERSATION_ID")
@@ -123,6 +126,7 @@ func run(ctx context.Context, cmd string, args []string, env Env, stdout, stderr
 			fmt.Fprintf(stdout, "No item matches %q.\n", q)
 			return nil
 		}
+		look.Prefetch(ctx, items)
 		printItems(ctx, stdout, look, items)
 		return nil
 	case "brief":
@@ -140,6 +144,7 @@ func run(ctx context.Context, cmd string, args []string, env Env, stdout, stderr
 			fmt.Fprintln(stdout, "No open items.")
 			return nil
 		}
+		look.Prefetch(ctx, open)
 		printItems(ctx, stdout, look, open)
 		return nil
 	default:

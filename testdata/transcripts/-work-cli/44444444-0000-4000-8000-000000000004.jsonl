@@ -1,0 +1,5 @@
+{"type":"user","message":{"role":"user","content":"<system-reminder>\nContents of CLAUDE.md: decisions live in CTX-3; see LOAD-8.\n</system-reminder>\nwhat changed today?"},"cwd":"/work/cli"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t","name":"Bash","input":{"command":"git log --oneline"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":[{"type":"text","text":"abc123 fix ABC-1 and SUP-48210"}]}]}}
+{"type":"user","message":{"role":"user","content":"This session is being continued from a previous conversation. Summary: worked on SUM-6."}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t","name":"Grep","input":{"pattern":"XSUP-4821"}}]}}
