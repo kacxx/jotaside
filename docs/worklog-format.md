@@ -1,6 +1,6 @@
 # Worklog format
 
-The grammar a worklog command (#42, in progress) is meant to read and write. It's the grammar an existing worklog skill already uses, so the two can write one log (kacxx/notebook#38, D10). Copied from that skill's grammar on 2026-11-11. It's a target, not verified against any jotaside code yet.
+The grammar the `worklog` command (#42) reads and writes. It's the grammar an existing worklog skill already uses, so the two can write one log (kacxx/notebook#38, D10). Copied from that skill's grammar on 2026-11-11. Checked on #42's branch on 2026-11-12: a log written by its `add` and `close` was read by the skill's status script with no unreadable lines.
 
 One `##` heading per live workstream, a metadata line, an optional description, then action items as checkboxes. Ticket keys in the example are placeholders; the grammar doesn't care about their shape.
 
@@ -38,7 +38,7 @@ id: esc-6784 · opened: 2026-08-27 · links: ESC-6784 · nudge: 2d
 | `review` | no | Review cadence, default `1w` |
 | `nudge` | no | Staleness threshold for delegated items, default `3d`; a deployment may set a tighter default for workstreams that link an escalation |
 
-**Item line.** `- [ ]` or `- [x]`, a free-text description, then ` — ` and `·`-separated facts, all optional. The owner defaults to `me` when absent.
+**Item line.** `- [ ]` or `- [x]`, a free-text description, then ` — ` and `·`-separated facts, all optional. The facts follow the line's *last* spaced em-dash, so a description may have its own. The owner defaults to `me` when absent.
 
 | Fact | Meaning |
 |---|---|
@@ -67,8 +67,6 @@ There is no blocked state: a blocker is a person to wait on, or a sentence in th
 
 ## Archiving
 
-Archived blocks move verbatim to `archive/YYYY-QN.md` for the current quarter:
-- a workstream whose items are all done moves whole;
-- a tool may also archive done items by age, under their workstream's id.
+Archived blocks move verbatim to `archive/YYYY-QN.md` for the current quarter: a workstream whose items are all done moves whole.
 
 The log lives in a local git repo with **no remote**: it holds private notes.
