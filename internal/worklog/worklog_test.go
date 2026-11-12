@@ -14,7 +14,7 @@ import (
 	"github.com/kacxx/jotaside/internal/app"
 )
 
-// sample follows docs/worklog.md: an owned item with a due date, a delegated
+// sample follows docs/worklog-format.md: an owned item with a due date, a delegated
 // one, a done one, and one whose description has its own spaced em-dash.
 const sample = `# Worklog — <owner>
 last-reconciled: 2026-08-28

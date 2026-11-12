@@ -42,8 +42,9 @@ fact below before touching names.
 - `internal/gitctx/` — best-effort git context with a time budget.
 - `internal/mcp/` — the read-only MCP server (`inbox`, `show`, `search`, `find`, `sessions`, `activity`).
 - `cmd/worklog/`, `internal/worklog/` — a separate command that links a
-  markdown worklog's items to their sessions; see [docs/worklog.md](docs/worklog.md),
-  which also has the log's grammar (`ledger.go` follows it).
+  markdown worklog's items to their sessions; see [docs/worklog.md](docs/worklog.md).
+  The log's grammar is in [docs/worklog-format.md](docs/worklog-format.md)
+  (`ledger.go` follows it).
 - `testdata/hooks/<agent>/` — recorded hook payloads used by tests and the
   smoke test.
 - `test/e2e/run.sh` — black-box install and hook flow, run in CI.

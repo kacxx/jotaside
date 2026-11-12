@@ -23,7 +23,7 @@ Usage:
   worklog show <item or key>        the matching items, each with its sessions
   worklog brief                     every open item with its sessions
 
-The log's grammar is in docs/worklog.md. A workstream is named by its id, or
+The log's grammar is in docs/worklog-format.md. A workstream is named by its id, or
 by its title or part of either. An item's facts follow " — ":
 
   worklog add outage-followup "Write the retro — due 2026-09-02 · ABC-1290"

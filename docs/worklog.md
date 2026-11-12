@@ -59,42 +59,17 @@ worklog brief                     # every open item with its sessions
 
 ## The log's grammar
 
-The grammar comes from the worklog skill the log is kept with, which has a
-script that reads it. This is the part `worklog` reads and writes; the
-skill's own format document is the source.
+The grammar is in [worklog-format.md](worklog-format.md): workstreams, item
+lines, the facts after ` — `, and how an item is added and closed. It comes
+from the worklog skill the log is kept with, whose status script reads the
+same file, and `internal/worklog/ledger.go` follows it.
 
-```markdown
-# Worklog — <owner>
-last-reconciled: 2026-08-31
+Two things are specific to this command:
 
-## Service outage follow-up
-id: outage-followup · opened: 2026-08-24 · links: ABC-1234
-Action items from last week's outage.
-
-- [ ] Guard on runtime processing — @alex since 2026-08-31 · ABC-1290
-- [ ] Incident retro written up — me · due 2026-09-02
-- [x] Assign the guard ticket — done 2026-08-31 · chat:a1b2c3d4
-```
-
-- **Workstream:** a `## <title>` heading. The line starting `id: ` under it
-  holds `·`-separated `key: value` pairs; `id` is the workstream's stable
-  name, since the title may change.
-- **Item:** `- [ ]` (open) or `- [x]` (done), a description, then ` — ` and
-  `·`-separated facts, all optional. The facts follow the line's *last*
-  spaced em-dash, so a description may have its own.
-
-| Fact | Meaning |
-|---|---|
-| `me` | The owner's own action (the default when no owner is written) |
-| `@person` | Delegated: the item is waiting on them |
-| `since <ISO date>` | When it was delegated, usually written `@person since <date>` |
-| `due <ISO date>` | When the owner's action is due |
-| `done <ISO date>` | When it was closed. Required on a `- [x]` item |
-| a ticket key or URL | A link; older logs put several, space-separated, in one fact |
-| `chat:<id>` | A session that worked on the item: the first 8 characters of its ID, or more |
-
-A line that doesn't parse (a date that isn't one, a done item with no `done`
-date) is never rewritten.
+- A `chat:` stamp it writes is the first 8 characters of the session ID. It
+  reads longer ones too.
+- A line that doesn't parse (a date that isn't one, a done item with no `done`
+  date) is never rewritten. `brief` and `show` mark it, and `close` refuses it.
 
 ## Checked, and not
 

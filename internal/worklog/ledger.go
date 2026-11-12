@@ -14,7 +14,7 @@ import (
 	"github.com/kacxx/jotaside/internal/app"
 )
 
-// The log's grammar is in docs/worklog.md. In short:
+// The log's grammar is in docs/worklog-format.md. In short:
 //
 //	## <title>                          a workstream
 //	id: <slug> · opened: <date> · …     its metadata line; id is its stable name
