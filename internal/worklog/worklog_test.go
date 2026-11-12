@@ -399,7 +399,8 @@ func TestBriefFindsKeysAtOnce(t *testing.T) {
 	if !seen["ABC-123"] {
 		t.Errorf("keys %v lack ABC-123", calls[0])
 	}
-	if n := strings.Count(out, "ABC-123: cd /work/x && claude --resume "+sessionB); n != 2 {
+	resume := app.Session{Source: "claude", ID: sessionB, Cwd: "/work/x"}.ResumeCommand()
+	if n := strings.Count(out, "ABC-123: "+resume); n != 2 {
 		t.Errorf("want the session on both open items naming ABC-123, got %d:\n%s", n, out)
 	}
 }

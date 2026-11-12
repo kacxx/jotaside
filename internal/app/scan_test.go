@@ -97,6 +97,9 @@ func TestFindScansTranscripts(t *testing.T) {
 }
 
 func TestFindScannedSessionFields(t *testing.T) {
+	old := resumeGOOS
+	resumeGOOS = "linux" // the cd form; Windows has its own test
+	t.Cleanup(func() { resumeGOOS = old })
 	svc := scanService(t)
 	ss, _, err := svc.Find(context.Background(), "ABC-1")
 	if err != nil {
