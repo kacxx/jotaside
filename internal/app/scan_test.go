@@ -447,6 +447,9 @@ func TestLookupsDontCount(t *testing.T) {
 		real   = "e0000000-0000-4000-8000-00000000000e"
 		sub    = "f0000000-0000-4000-8000-00000000000f"
 		search = "f1000000-0000-4000-8000-00000000000f"
+		winExe = "a1000000-0000-4000-8000-00000000000a"
+		wlog   = "a2000000-0000-4000-8000-00000000000a"
+		pwsh   = "a3000000-0000-4000-8000-00000000000a"
 	)
 	for id, tool := range map[string]string{
 		bash:   toolUseLine("Bash", `{"command":"jotaside find ABC-1"}`),
@@ -456,6 +459,11 @@ func TestLookupsDontCount(t *testing.T) {
 		search: toolUseLine("mcp__jotaside__search", `{"query":"ABC-1 cache"}`),
 		real:   toolUseLine("Bash", `{"command":"git checkout -b ABC-1-fix"}`),
 		sub:    toolUseLine("mcp__tracker__getIssue", `{"key":"ABC-1"}`),
+		// Windows: the binary by quoted full path, from the PowerShell tool.
+		winExe: toolUseLine("PowerShell", `{"command":"& \"C:\\Users\\you\\go\\bin\\jotaside.exe\" find ABC-1"}`),
+		wlog:   toolUseLine("Bash", `{"command":"worklog show ABC-1"}`),
+		// An ordinary PowerShell call naming the key still counts.
+		pwsh: toolUseLine("PowerShell", `{"command":"git checkout -b abc-1-fix"}`),
 	} {
 		writeScanFile(t, dir, filepath.Join("-p", id+".jsonl"), typedLine("/w", "where was that?"), tool)
 	}
@@ -467,7 +475,7 @@ func TestLookupsDontCount(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got, want := sessionIDs(ss), []string{real, sub}; !slices.Equal(got, want) {
+	if got, want := sessionIDs(ss), []string{pwsh, real, sub}; !slices.Equal(got, want) {
 		t.Fatalf("got %v, want %v", got, want)
 	}
 }
@@ -483,6 +491,15 @@ func TestIsLookup(t *testing.T) {
 		{"Bash", `{"command":"jotaside done 88"}`, false},
 		{"Bash", `{"command":"myjotaside find ABC-1"}`, false},
 		{"Bash", `{"command":"jotasidefind ABC-1"}`, false},
+		{"Bash", `{"command":"JOTASIDE Find ABC-1"}`, true},
+		{"Bash", `{"command":"jotaside.exe search ABC-1"}`, true},
+		{"PowerShell", `{"command":"& 'C:\\tools\\jotaside.exe' show 12"}`, true},
+		{"PowerShell", `{"command":"Get-Content notes.md | Select-String ABC-1"}`, false},
+		{"Bash", `{"command":"worklog show ABC-1"}`, true},
+		{"Bash", `{"command":"worklog brief"}`, false},
+		{"Bash", `{"command":"worklog close ABC-1"}`, false},
+		{"Bash", `{"command":"$JS find ABC-1"}`, false}, // a binary in a variable isn't recognised
+		{"Read", `{"command":"jotaside find ABC-1"}`, false},
 		{"mcp__jotaside__find", `{"query":"ABC-1"}`, true},
 		{"mcp__jotaside__activity", `{"id":3}`, true},
 		{"mcp__aside__find", `{"query":"ABC-1"}`, true},

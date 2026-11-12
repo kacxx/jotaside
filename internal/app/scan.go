@@ -490,18 +490,23 @@ type contentBlock struct {
 	Input json.RawMessage `json:"input"`
 }
 
-// jotasideLookup is a shell command that looks something up in jotaside.
-var jotasideLookup = regexp.MustCompile(`\bjotaside\s+(?:find|search|show)\b`)
+// jotasideLookup is a shell command that looks something up in jotaside:
+// jotaside find, search or show, or worklog show (which runs find), any case,
+// as jotaside.exe too and by a quoted path ("C:\…\jotaside.exe" find). The
+// same rule as kacxx/notebook's initiative-sessions.py. A binary held in a
+// variable isn't recognised.
+var jotasideLookup = regexp.MustCompile(`(?i)\b(?:jotaside(?:\.exe)?["']?\s+(?:find|search|show)|worklog(?:\.exe)?["']?\s+show)\b`)
 
 // isLookup reports whether a tool call only looked something up in jotaside:
 // a call to its MCP server (mcp__jotaside__*, or mcp__aside__* from before
-// the rename), or a Bash command running jotaside find, search or show. Such a
-// call names the key but doesn't act on it (#35 D3).
+// the rename), or a Bash or PowerShell command running a lookup
+// (jotasideLookup). Such a call names the key but doesn't act on it (#35 D3).
+// A command that looks up and also acts is skipped whole.
 func isLookup(b contentBlock) bool {
 	if strings.HasPrefix(b.Name, "mcp__jotaside__") || strings.HasPrefix(b.Name, "mcp__aside__") {
 		return true
 	}
-	if b.Name != "Bash" {
+	if b.Name != "Bash" && b.Name != "PowerShell" {
 		return false
 	}
 	var in struct {

@@ -536,8 +536,9 @@ runs, and lists the sessions whose typed prompts (slash-command arguments
 included) or tool-call inputs match the query, by `find`'s own rule, with
 `<system-reminder>` blocks stripped. Tool output, loaded context and the
 agent's replies are never read; scheduled-task runs are left out; jotaside's
-own lookups (a Bash `jotaside find`, `search` or `show`, or an
-`mcp__jotaside__*` call, or `mcp__aside__*` from before the rename) don't count (D3, revised 2026-11-13); a subagent's
+own lookups (a Bash or PowerShell `jotaside find`, `search` or `show` or
+`worklog show`, or an `mcp__jotaside__*` call, or `mcp__aside__*` from before
+the rename) don't count (D3, revised 2026-11-13); a subagent's
 transcript counts for its parent. These sessions are merged with the ones found
 by jots, once each, and every session is headed by the query. Always on, no
 flag. The first-prompt labels stay. Settled in #35 (D1–D10). `find`'s

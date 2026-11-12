@@ -113,9 +113,11 @@ under their labels, without the matching jots.
   (a prompt, including one sent while the agent was busy; a `!` command; a
   slash command's arguments, but not the command's own text) or in the input
   of one of its tool calls, matched as above. jotaside's own lookups don't
-  count: a Bash call whose command runs `jotaside find`, `search` or `show`,
-  or a call to one of its MCP tools (`mcp__jotaside__…`, or `mcp__aside__…`
-  from before the rename), is skipped entirely, so a chat that only looked a key up isn't listed for it. Not read:
+  count, so a chat that only looked a key up isn't listed for it: a Bash or
+  PowerShell call whose command runs `jotaside find`, `search` or `show` or
+  `worklog show` (any case, `jotaside.exe` and a quoted path included), or a
+  call to one of jotaside's MCP tools (`mcp__jotaside__…`, or `mcp__aside__…`
+  from before the rename), is skipped. Not read:
   `<system-reminder>` blocks, so memory and instruction files loaded into the
   chat; tool output; the agent's replies; the summary Claude Code writes when
   a chat runs out of context. Scheduled-task runs are left out. A subagent's
@@ -131,7 +133,16 @@ under their labels, without the matching jots.
   their last activity, newest jot or transcript change, newest first, and
   `last` shows it.
   On a Mac with 2.3 GB of transcripts, a `find` took about 1 s with the
-  files in the disk cache (checked 2026-11-12, on the change in #35).
+  files in the disk cache (checked 2026-11-12, on the change in #35); with
+  them not cached, it hasn't been measured.
+- **Limits of the lookup rule.** It reads the command's text, so:
+  - a binary held in a variable (`$JS find ABC-1`) isn't recognised as a
+    lookup, and the call counts;
+  - a command that looks up and acts
+    (`jotaside find ABC-1 && git checkout -b abc-1-fix`) is skipped whole, so
+    the checkout doesn't count;
+  - a lookup asked in words in a typed prompt ("which sessions worked on
+    ABC-1?") still counts, since it's typed text.
 - **Codex and Cursor chats are found only by their jots.** A chat where you
   never jotted doesn't appear, unless the hook labelled it
   [automatically](#automatic-labels). Starting a ticket's chat with a
