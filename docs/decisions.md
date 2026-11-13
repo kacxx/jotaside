@@ -468,6 +468,24 @@ input box, where Enter saves it again; that wasn't seen in normal use on
 database (fuzzy matching, D1), or someone needs to jot the same thing twice in
 a minute on purpose.
 
+## No Homebrew cask
+
+**Decided:** releases publish the archives and `checksums.txt` only. There's no
+Homebrew cask; install is `go install` or a release archive. Decided by the owner
+after the v0.1.3 release (kacxx/jotaside#27), done in #31.
+
+**Why:** the cask added in #21 was never published. `HOMEBREW_TAP_TOKEN` was
+never set and the tap repository was never set up, so goreleaser failed at the
+end of every release from v0.1.2 to v0.1.8, seven in a row, after uploading the
+archives, and that stopped the automatic release smoke test each time. The
+cost is on macOS
+without Go: the user puts the binary on `PATH` and clears the quarantine flag
+(`xattr`) themselves, on install and on each update, as the README describes.
+
+**Revisit if:** there's a tap repo with a cask and a token that can write to
+it, and a release run that proves the publish before the README offers
+`brew install` again.
+
 ## A Claude Code chat's first prompt labels it
 
 **Decided:** when a Claude Code chat's first prompt names a work item, the

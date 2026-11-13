@@ -47,7 +47,7 @@
 
 ### Features
 
-* install on macOS with brew install kacxx/tap/jotaside ([#21](https://github.com/kacxx/jotaside/issues/21)) ([ff88a56](https://github.com/kacxx/jotaside/commit/ff88a56fbc6b1eebe56125b75d6e0c6449128b3e))
+* install on macOS with brew install kacxx/tap/jotaside ([#21](https://github.com/kacxx/jotaside/issues/21)) ([ff88a56](https://github.com/kacxx/jotaside/commit/ff88a56fbc6b1eebe56125b75d6e0c6449128b3e)). Withdrawn: the cask was never published, and Homebrew was dropped from the release in [#31](https://github.com/kacxx/jotaside/pull/31); install with `go install` or the release archives.
 * show the first and last records of a long session in activity ([#25](https://github.com/kacxx/jotaside/issues/25)) ([43392f9](https://github.com/kacxx/jotaside/commit/43392f95df21d183e64d57d29cb12ded8ad84ae5))
 
 
