@@ -1,0 +1,5 @@
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"<system-reminder>\nLOAD-8 from memory\n</system-reminder>"},{"type":"text","text":"hello"}]},"cwd":"/work/desktop","entrypoint":"claude-desktop"}
+{"type":"user","message":{"role":"user","content":"<command-name>/review</command-name>\n<command-message>review CMD-9</command-message>\n<command-args>ABC-1</command-args>"}}
+{"type":"user","message":{"role":"user","content":"<local-command-stdout>LOCAL-6 printed</local-command-stdout>"}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t","name":"mcp__tracker__getIssue","input":{"issue":{"key":"ABC-2"}}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"ABC-2: OUT-7"}]}}

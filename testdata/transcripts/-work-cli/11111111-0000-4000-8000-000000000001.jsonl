@@ -1,0 +1,12 @@
+{"type":"file-history-snapshot","messageId":"m"}
+{"type":"user","message":{"role":"user","content":"<system-reminder>\nContents of CLAUDE.md: decisions live in CTX-3; see LOAD-8.\n</system-reminder>\nstart on ABC-1, then ABC-2"},"cwd":"/work/cli","entrypoint":"cli","sessionId":"11111111-0000-4000-8000-000000000001"}
+{"type":"attachment","attachment":{"type":"file","content":"notes for CTX-3"},"cwd":"/work/cli"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"tool_use","id":"t","name":"Bash","input":{"command":"git checkout -b feature/abc-2-fix"}}]}}
+{"type":"user","message":{"role":"user","content":[{"type":"tool_result","tool_use_id":"t","content":"Switched to a new branch 'feature/abc-2-fix'\nOUT-7 is in this listing"}]}}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Working on REPLY-5 next."}]}}
+{"type":"user","message":{"role":"user","content":"<system-reminder>META-4 caveat</system-reminder>"},"isMeta":true}
+{"type":"api-request-blob","message":{"role":"system","content":[{"type":"text","text":"SYS-5 system prompt"}]}}
+{"type":"attachment","attachment":{"type":"queued_command","prompt":"also look at QUEUE-1","commandMode":"prompt"}}
+{"type":"attachment","attachment":{"type":"queued_command","prompt":"<task-notification>TASK-2 finished</task-notification>","commandMode":"task-notification"}}
+{"type":"user","message":{"role":"user","content":"<bash-input>git checkout -b bash-3-fix</bash-input>"}}
+{"type":"user","message":{"role":"user","content":"<bash-stdout>Switched to branch 'STDOUT-4'</bash-stdout><bash-stderr></bash-stderr>"}}

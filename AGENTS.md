@@ -31,6 +31,8 @@ fact below before touching names.
   or tabs (or non-breaking spaces), then a non-space character, after any leading `<system-reminder>` blocks.
 - `internal/app/` — the service layer: capture, inbox, done, `promote.go`
   (jot to GitHub issue via `gh`), `sessions.go` (`find` and `sessions`),
+  `scan.go` (`find`'s scan of Claude Code transcripts for prompts and tool
+  calls that name the query, #35),
   `label.go` (a Claude Code chat's first prompt that names a work item saves
   a done `session:` label, #32; in Cursor, the first prompt that names one,
   #36).

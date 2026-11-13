@@ -346,7 +346,10 @@ var tools = []map[string]any{
 			"for questions like \"where did I work on SUP-4821?\". A ticket key such as SUP-4821 matches as a " +
 			"whole word; anything else is a substring. Each session has the matching jots, its repo and " +
 			"branch, resume_command to reopen it (the user runs it; this tool doesn't). " + checkedNote + quoteNote +
-			sessionOpenNote + "Only chats with a jot in them are found. limit caps the sessions and the jots not in a session, most recent first; " +
+			sessionOpenNote + "Also lists the Claude Code sessions whose transcripts show the user's typed prompts or the " +
+			"session's tool calls naming the query (tool output and loaded memory or instruction files are not read, " +
+			"jotaside's own lookups such as this tool don't count; " +
+			"scheduled-task runs are left out); a session found only that way has match_count 0, no label and no open_url. limit caps the sessions and the jots not in a session, most recent first; " +
 			"total_sessions and total_not_in_a_session are the counts before the cut. Each session lists its " +
 			fmt.Sprint(maxSessionMatches) + " newest matching jots (oldest first), and match_count is how many matched.",
 		"inputSchema": map[string]any{
@@ -519,7 +522,7 @@ func (s *Server) sessionJSON(x app.Session) map[string]any {
 		"repo":           latest.RepoName,
 		"branch":         latest.Branch,
 		"cwd":            x.Cwd,
-		"last_active":    latest.CreatedAt,
+		"last_active":    x.LastActive,
 		"resume_command": x.ResumeCommand(),
 		"open_url":       x.OpenURL,
 		"open_command":   s.sessionOpenCommand(x),

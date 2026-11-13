@@ -527,3 +527,36 @@ edit-and-resend workaround.
 
 **Revisit if:** Cursor chats are labelled with the wrong item often enough to
 matter, or Cursor starts sending a transcript.
+
+## `find` scans Claude Code transcripts instead of tagging sessions
+
+**Decided:** `jotaside find <query>` (and the MCP `find` tool, the same code)
+reads every Claude Code transcript under `~/.claude/projects` each time it
+runs, and lists the sessions whose typed prompts (slash-command arguments
+included) or tool-call inputs match the query, by `find`'s own rule, with
+`<system-reminder>` blocks stripped. Tool output, loaded context and the
+agent's replies are never read; scheduled-task runs are left out; jotaside's
+own lookups (a Bash or PowerShell `jotaside find`, `search` or `show` or
+`worklog show`, or an `mcp__jotaside__*` call, or `mcp__aside__*` from before
+the rename) don't count (D3, revised 2026-11-13); a subagent's
+transcript counts for its parent. These sessions are merged with the ones found
+by jots, once each, and every session is headed by the query. Always on, no
+flag. The first-prompt labels stay. Settled in #35 (D1–D10). `find`'s
+whole-word rule now covers `owner/repo#N` queries as well as ticket keys,
+since `worklog` looks those up and a substring match let `#3` find `#35`.
+
+**Why:** a session was findable only by its first prompt's label, so one that
+moved from ticket to ticket, or didn't start with one, was missed: on
+2026-11-12, `find` listed 2 of the 5 sessions that acted on one ticket. Tagging
+every prompt with the hook would need a sweep for the last turn, a watermark,
+de-duplication across Cursor's two hooks and a session-end hook that isn't
+known to fire on Desktop. Reading the transcripts at query time covers final
+turns, Desktop, and sessions from before the change, and stores nothing. Only
+typed prompts and tool calls count because memory and instruction files name
+keys in nearly every session, and lookups don't, because otherwise every
+lookup lists the session that ran it and lists grow with use. A fixed-string prefilter (any ASCII case) keeps
+it fast: the files without the query are never parsed. `FindEach` reads
+the transcripts once for many queries, for `worklog brief`.
+
+**Revisit if:** `find` gets too slow to use (then an index, #11), or a lookup
+misses a Codex or Cursor session, which have no transcript jotaside reads.

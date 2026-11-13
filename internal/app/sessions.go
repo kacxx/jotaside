@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"sort"
 	"strings"
+	"time"
 )
 
 // SessionPrefix starts a jot that labels its session (">> session: SUP-4821 …").
@@ -30,10 +31,20 @@ type Session struct {
 	Matches []Entry
 	// OpenURL links to the chat, set by Find; "" when there is no link.
 	OpenURL string
+	// LastActive is when its newest jot was saved or, for a session Find
+	// found in Claude Code's transcripts, its transcript last changed if that
+	// is later.
+	LastActive time.Time
 }
 
-// Latest returns the session's newest jot.
-func (s Session) Latest() Entry { return s.Jots[len(s.Jots)-1] }
+// Latest returns the session's newest jot. A session Find found only in
+// Claude Code's transcripts has none, and returns the zero Entry.
+func (s Session) Latest() Entry {
+	if len(s.Jots) == 0 {
+		return Entry{}
+	}
+	return s.Jots[len(s.Jots)-1]
+}
 
 // LabelText is the label's first line, or for a "session:" jot the first line
 // of its name.
@@ -90,38 +101,73 @@ func (s *Service) Sessions(ctx context.Context, n int) ([]Session, error) {
 	return ss, nil
 }
 
-// Find returns the sessions with a jot containing q, most recently active
+// Find returns the sessions with a jot containing q, and the Claude Code
+// sessions whose transcripts acted on it (see scan.go), most recently active
 // first, each with its matching jots, plus the matching jots that have no
-// session. Matching is the same as Search, except that a query shaped like a
-// ticket key (SUP-4821) only matches it as a whole word, so it doesn't find
-// SUP-48210.
+// session. A session found both ways is listed once. Matching is the same as
+// Search, except that a query shaped like a ticket key (SUP-4821) only matches
+// it as a whole word, so it doesn't find SUP-48210.
 func (s *Service) Find(ctx context.Context, q string) ([]Session, []Entry, error) {
-	if strings.TrimSpace(q) == "" {
-		return nil, nil, errors.New("empty search query")
-	}
-	// A key may have stray spaces around it; any other query is taken as typed.
-	if key := strings.TrimSpace(q); ticketKeyShape.MatchString(key) {
-		q = key
-	}
-	matches, err := s.store.Search(ctx, q, 0)
+	found, err := s.FindEach(ctx, []string{q})
 	if err != nil {
 		return nil, nil, err
 	}
-	if ticketKeyShape.MatchString(q) {
-		// Not \b: it counts "_" as part of a word, which would miss
-		// SUP-4821_cache.
-		whole := regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9])` + regexp.QuoteMeta(q) + `(?:[^A-Za-z0-9]|$)`)
+	return found[0].Sessions, found[0].Loose, nil
+}
+
+// Found is what Find returns for one query.
+type Found struct {
+	Sessions []Session
+	Loose    []Entry
+}
+
+// FindEach runs Find for each query, reading the transcripts once for all of
+// them. found[i] is for qs[i].
+func (s *Service) FindEach(ctx context.Context, qs []string) ([]Found, error) {
+	ms := make([]queryMatcher, len(qs))
+	for i, q := range qs {
+		if strings.TrimSpace(q) == "" {
+			return nil, errors.New("empty search query")
+		}
+		ms[i] = newQueryMatcher(q)
+	}
+	all, err := s.store.List(ctx, "", 0)
+	if err != nil {
+		return nil, err
+	}
+	groups := groupSessions(all)
+	scanned, every, err := scanTranscripts(ctx, s.transcripts, ms)
+	if err != nil {
+		return nil, err
+	}
+	starts := map[string]string{} // start directory by transcript, once read
+	out := make([]Found, len(qs))
+	for i, m := range ms {
+		ss, loose, err := s.findOne(ctx, m, groups, scanned[i], every, starts)
+		if err != nil {
+			return nil, err
+		}
+		out[i] = Found{ss, loose}
+	}
+	return out, nil
+}
+
+// findOne is Find for one query, given every session with jots, the
+// sessions the scan found for it, and every Claude Code transcript by
+// session id.
+func (s *Service) findOne(ctx context.Context, m queryMatcher, groups []Session, scanned []scannedSession, every map[string]scannedSession, starts map[string]string) ([]Session, []Entry, error) {
+	matches, err := s.store.Search(ctx, m.query, 0)
+	if err != nil {
+		return nil, nil, err
+	}
+	if m.whole != nil {
 		kept := matches[:0]
 		for _, e := range matches {
-			if whole.MatchString(e.Text) || whole.MatchString(e.DoneNote) {
+			if m.whole.MatchString(e.Text) || m.whole.MatchString(e.DoneNote) {
 				kept = append(kept, e)
 			}
 		}
 		matches = kept
-	}
-	all, err := s.store.List(ctx, "", 0)
-	if err != nil {
-		return nil, nil, err
 	}
 	var loose []Entry
 	for _, e := range matches { // newest first, as Search returns them
@@ -135,15 +181,116 @@ func (s *Service) Find(ctx context.Context, q string) ([]Session, []Entry, error
 			byKey[keyOf(e)] = append(byKey[keyOf(e)], e)
 		}
 	}
+	inScan := map[string]bool{}
+	for _, x := range scanned {
+		inScan[x.id] = true
+	}
+	startDir := func(path string) string {
+		dir, ok := starts[path]
+		if !ok {
+			dir = transcriptStartDir(path)
+			starts[path] = dir
+		}
+		return dir
+	}
 	var found []Session
-	for _, ss := range groupSessions(all) {
-		if m, ok := byKey[sessionKey{ss.Source, ss.ID}]; ok {
-			ss.Matches = m
-			found = append(found, ss)
+	for _, ss := range groups {
+		jm, jotted := byKey[sessionKey{ss.Source, ss.ID}]
+		claude := ss.Source == "claude"
+		if scan := claude && inScan[ss.ID]; !jotted && !scan {
+			continue
+		}
+		ss.Matches = jm
+		if claude {
+			delete(inScan, ss.ID) // listed with its jots
+			if x, ok := every[ss.ID]; ok {
+				// Its transcript may show later work than its newest jot.
+				if x.lastActive.After(ss.LastActive) {
+					ss.LastActive = x.lastActive
+				}
+				if dir := startDir(x.path); dir != "" {
+					ss.Cwd = dir
+				}
+			} else {
+				// Transcript not listed (the scan is off, or it is elsewhere):
+				// the one its jots record.
+				one := []Session{ss}
+				setStartDirs(one)
+				ss = one[0]
+			}
+		}
+		found = append(found, ss)
+	}
+	for _, x := range scanned {
+		if !inScan[x.id] {
+			continue
+		}
+		found = append(found, Session{Source: "claude", ID: x.id, Cwd: startDir(x.path), LastActive: x.lastActive})
+	}
+	sort.SliceStable(found, func(i, j int) bool { return found[i].LastActive.After(found[j].LastActive) })
+	return found, loose, nil
+}
+
+// queryMatcher is find's matching rule for one query.
+type queryMatcher struct {
+	// query is the query as searched: a ticket key without stray spaces.
+	query string
+	// whole matches a ticket-shaped query as a whole word; nil for any other.
+	whole *regexp.Regexp
+	// lower is the query in lowercase ASCII, for a substring match.
+	lower string
+	// needle is what the transcript prefilter looks for, lowercase: the longest
+	// part of the query that JSON writes as is.
+	needle []byte
+}
+
+func newQueryMatcher(q string) queryMatcher {
+	// A key may have stray spaces around it; any other query is taken as typed.
+	if key := strings.TrimSpace(q); ticketKeyShape.MatchString(key) {
+		q = key
+	}
+	if ref := strings.TrimSpace(q); repoRefShape.MatchString(ref) {
+		q = ref
+	}
+	m := queryMatcher{query: q, lower: asciiLower(q)}
+	switch {
+	case ticketKeyShape.MatchString(q):
+		// Not \b: it counts "_" as part of a word, which would miss
+		// SUP-4821_cache.
+		m.whole = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9])` + regexp.QuoteMeta(q) + `(?:[^A-Za-z0-9]|$)`)
+	case repoRefShape.MatchString(q):
+		// owner/repo#3 is not owner/repo#35, nor xowner/repo#3.
+		m.whole = regexp.MustCompile(`(?i)(?:^|[^A-Za-z0-9._-])` + regexp.QuoteMeta(q) + `(?:[^0-9]|$)`)
+	}
+	// JSON escapes quotes, backslashes and control characters, so the bytes of
+	// a query with them aren't in the file; look for the longest run without.
+	for _, part := range strings.FieldsFunc(m.lower, jsonEscapes) {
+		if len(part) > len(m.needle) {
+			m.needle = []byte(part)
 		}
 	}
-	setStartDirs(found)
-	return found, loose, nil
+	if len(m.needle) == 0 {
+		// Nothing but such characters: look for them as JSON writes them, so
+		// the prefilter still skips most files.
+		b, _ := json.Marshal(m.lower)
+		m.needle = b[1 : len(b)-1]
+	}
+	return m
+}
+
+// match reports whether text matches the query.
+func (m queryMatcher) match(text string) bool {
+	if m.whole != nil {
+		return m.whole.MatchString(text)
+	}
+	return containsFold(text, m.lower)
+}
+
+// asciiLower lowercases the ASCII letters in s.
+func asciiLower(s string) string {
+	b := []byte(s)
+	lowerASCII(b)
+	return string(b)
 }
 
 // setStartDirs sets each Claude Code session's Cwd to the directory it
@@ -201,6 +348,13 @@ func transcriptStartDir(path string) string {
 	return ""
 }
 
+// repoRefShape is a query that looks like owner/repo#N, as WorkItem returns
+// it.
+var repoRefShape = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+#[0-9]+$`)
+
+// jsonEscapes reports whether JSON writes r escaped.
+func jsonEscapes(r rune) bool { return r == '"' || r == '\\' || r < 0x20 }
+
 // ticketKeyShape is a query that looks like a ticket key. Which prefixes are
 // really tickets isn't known (there is no allowlist), so UTF-8 is treated the
 // same: it matches as a whole word too.
@@ -234,6 +388,7 @@ func groupSessions(es []Entry) []Session {
 		}
 	}
 	for i := range ss {
+		ss[i].LastActive = ss[i].Latest().CreatedAt
 		ss[i].Label = ss[i].Jots[0]
 		for _, e := range ss[i].Jots {
 			if _, ok := sessionName(e.Text); ok {

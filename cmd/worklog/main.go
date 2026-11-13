@@ -27,7 +27,9 @@ func mainCode() int {
 		if _, err := os.Stat(path); err == nil {
 			if svc, err := app.Open(path, app.BusyTimeout()); err == nil {
 				defer svc.Close()
+				svc.SetTranscriptsDir(app.ClaudeProjectsDir())
 				env.Find = svc.Find
+				env.FindEach = svc.FindEach
 				env.Sessions = func(ctx context.Context) ([]app.Session, error) { return svc.Sessions(ctx, 0) }
 			}
 		}

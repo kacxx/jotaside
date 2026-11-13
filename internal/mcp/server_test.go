@@ -402,6 +402,72 @@ func TestFindTool(t *testing.T) {
 	}
 }
 
+// The find tool lists the same sessions as Find, including Claude Code
+// sessions found only in their transcripts, which have no jots (#35).
+func TestFindToolScansTranscripts(t *testing.T) {
+	ctx := context.Background()
+	svc, err := app.Open(filepath.Join(t.TempDir(), "jot.db"), time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer svc.Close()
+	svc.SetTranscriptsDir(filepath.Join("..", "..", "testdata", "transcripts"))
+	const cli, desk = "11111111-0000-4000-8000-000000000001", "22222222-0000-4000-8000-000000000002"
+	if _, err := svc.Capture(ctx, app.CaptureRequest{Text: "ABC-2 note", Source: "claude", SessionID: cli, Cwd: "/work/cli"}); err != nil {
+		t.Fatal(err)
+	}
+	in := `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"find","arguments":{"query":"ABC-2"}}}`
+	var out bytes.Buffer
+	if err := NewServer(svc, "test").Serve(ctx, strings.NewReader(in), &out); err != nil {
+		t.Fatal(err)
+	}
+	var r struct {
+		Result struct {
+			StructuredContent struct {
+				Sessions []struct {
+					SessionID     string      `json:"session_id"`
+					Label         string      `json:"label"`
+					Cwd           string      `json:"cwd"`
+					LastActive    time.Time   `json:"last_active"`
+					ResumeCommand string      `json:"resume_command"`
+					MatchCount    int         `json:"match_count"`
+					Matches       []app.Entry `json:"matches"`
+				} `json:"sessions"`
+				TotalSessions int `json:"total_sessions"`
+			} `json:"structuredContent"`
+		} `json:"result"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &r); err != nil {
+		t.Fatalf("%v: %s", err, out.String())
+	}
+	ss, _, err := svc.Find(ctx, "ABC-2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := r.Result.StructuredContent.Sessions
+	if len(got) != len(ss) || len(got) != 2 || r.Result.StructuredContent.TotalSessions != 2 {
+		t.Fatalf("tool listed %d sessions, Find %d: %s", len(got), len(ss), out.String())
+	}
+	for i, s := range got {
+		if s.SessionID != ss[i].ID {
+			t.Fatalf("session %d: tool %s, Find %s", i, s.SessionID, ss[i].ID)
+		}
+		switch s.SessionID {
+		case cli:
+			if s.MatchCount != 1 || s.Label != "ABC-2 note" {
+				t.Errorf("labelled session: %+v", s)
+			}
+		case desk:
+			if s.MatchCount != 0 || s.Matches == nil || s.Label != "" || s.Cwd != "/work/desktop" ||
+				s.LastActive.IsZero() || !strings.HasSuffix(s.ResumeCommand, "claude --resume "+desk) {
+				t.Errorf("scanned session: %+v", s)
+			}
+		default:
+			t.Errorf("unexpected session %s", s.SessionID)
+		}
+	}
+}
+
 func TestFindToolCapsSessionMatches(t *testing.T) {
 	ctx := context.Background()
 	svc, err := app.Open(filepath.Join(t.TempDir(), "jot.db"), time.Second)

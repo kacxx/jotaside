@@ -66,19 +66,26 @@ with your next message anyway (see [cursor.md](cursor.md)).
 ## Finding a session
 
 Every jot captured by a hook records the agent's session id. `jotaside find`
-groups the jots that match a query by session, so you can get back to the chat
+groups the jots that match a query by session, and adds the Claude Code
+sessions whose transcripts show work on it, so you can get back to the chat
 where you worked on something:
 
 ```
 $ jotaside find SUP-4821
-SUP-4821 token TTL investigation
+SUP-4821
   claude · api@main · 3 jots · last 2d (#18)
   #12   5d     session: SUP-4821 token TTL investigation
   #18   2d     SUP-4821 needs a backend ticket
   cd /Users/you/code/api && claude --resume 0f3c9a…
+
+SUP-4821
+  claude · last 4d
+  cd /Users/you/code/api && claude --resume 7d21e0…
 ```
 
-`jotaside sessions` lists recent sessions the same way, without the matching jots.
+Each session is headed by the query, since it may not be the session's label;
+the session's matching jots follow. `jotaside sessions` lists recent sessions
+under their labels, without the matching jots.
 
 - **Label a session** by jotting `>> session: <why>` in it, for example
   `>> session: SUP-4821 token TTL investigation`. The newest `session:` jot
@@ -94,12 +101,50 @@ SUP-4821 token TTL investigation
   `SUP-4821`, only matches that key as a word, so it doesn't list `SUP-48210`
   or `XSUP-4821`. Any other character next to it counts as a separator,
   including `_` and `/`, so `SUP-4821_cache` and `feature/SUP-4821-fix`
-  match. Anything else is a substring search, as in `jotaside search`.
+  match. An `owner/repo#N` query matches as a whole reference too, so
+  `acme/widgets#3` doesn't list `acme/widgets#35`. Anything else is a
+  substring search, as in `jotaside search`.
   There is no list of ticket prefixes to configure and no tag table: the
   filter runs on the matching jots at query time.
 - Done jots are listed with `(done)`, as in `jotaside search`.
-- **Only chats with a jot in them are listed.** A chat where you never jotted
-  doesn't appear, unless the hook labelled it
+- **Claude Code transcripts are scanned** (`~/.claude/projects`, or
+  `$CLAUDE_CONFIG_DIR/projects`) each time `find` runs, terminal and Desktop
+  sessions alike. A session is listed if the query is in something you typed
+  (a prompt, including one sent while the agent was busy; a `!` command; a
+  slash command's arguments, but not the command's own text) or in the input
+  of one of its tool calls, matched as above. jotaside's own lookups don't
+  count, so a chat that only looked a key up isn't listed for it: a Bash or
+  PowerShell call whose command runs `jotaside find`, `search` or `show` or
+  `worklog show` (any case, `jotaside.exe` and a quoted path included), or a
+  call to one of jotaside's MCP tools (`mcp__jotaside__…`, or `mcp__aside__…`
+  from before the rename), is skipped. Not read:
+  `<system-reminder>` blocks, so memory and instruction files loaded into the
+  chat; tool output; the agent's replies; the summary Claude Code writes when
+  a chat runs out of context. Scheduled-task runs are left out. A subagent's
+  transcript (`<session>/subagents/*.jsonl`) counts for the session that
+  started it, as does an older `<project>/agent-<id>.jsonl`; if only its
+  subagents' files are left, the session can't be resumed and isn't listed.
+  A session with a transcript in two project folders is listed once, resumed
+  from the newer. A session found both ways is listed once, with
+  its jots; one found only in its transcript shows `claude · last <age>`
+  (from the transcript's last change) and its resume command, but no
+  `jotaside open` line even from Claude Desktop: the link is built from a
+  session's jots, and `jotaside open` takes a jot. Sessions are ordered by
+  their last activity, newest jot or transcript change, newest first, and
+  `last` shows it.
+  On a Mac with 2.3 GB of transcripts, a `find` took about 1 s with the
+  files in the disk cache (checked 2026-11-12, on the change in #35); with
+  them not cached, it hasn't been measured.
+- **Limits of the lookup rule.** It reads the command's text, so:
+  - a binary held in a variable (`$JS find ABC-1`) isn't recognised as a
+    lookup, and the call counts;
+  - a command that looks up and acts
+    (`jotaside find ABC-1 && git checkout -b abc-1-fix`) is skipped whole, so
+    the checkout doesn't count;
+  - a lookup asked in words in a typed prompt ("which sessions worked on
+    ABC-1?") still counts, since it's typed text.
+- **Codex and Cursor chats are found only by their jots.** A chat where you
+  never jotted doesn't appear, unless the hook labelled it
   [automatically](#automatic-labels). Starting a ticket's chat with a
   `session:` jot makes it findable in any agent.
 - Jots from `jotaside add` have no session. `find` lists matching ones under
