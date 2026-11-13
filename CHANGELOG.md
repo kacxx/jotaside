@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.8](https://github.com/kacxx/jotaside/compare/v0.1.7...v0.1.8) (2026-11-13)
+
+
+### Features
+
+* find scans Claude Code transcripts for sessions that acted on the query ([#48](https://github.com/kacxx/jotaside/issues/48)) ([eacf810](https://github.com/kacxx/jotaside/commit/eacf810295b5f9f69b7d9a943a4684ba0379b9f7))
+
 ## [0.1.7](https://github.com/kacxx/jotaside/compare/v0.1.6...v0.1.7) (2026-11-12)
 
 
