@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.1.8](https://github.com/kacxx/jotaside/compare/v0.1.7...v0.1.8) (2026-11-13)
+
+
+### Features
+
+* find scans Claude Code transcripts for sessions that acted on the query ([#48](https://github.com/kacxx/jotaside/issues/48)) ([eacf810](https://github.com/kacxx/jotaside/commit/eacf810295b5f9f69b7d9a943a4684ba0379b9f7))
+
+## [0.1.7](https://github.com/kacxx/jotaside/compare/v0.1.6...v0.1.7) (2026-11-12)
+
+
+### Features
+
+* worklog command that links a log's items to their sessions ([#42](https://github.com/kacxx/jotaside/issues/42)) ([04b3f5a](https://github.com/kacxx/jotaside/commit/04b3f5a7373e49ed17b0f6f1f79ac9b94e486049))
+
+## [0.1.6](https://github.com/kacxx/jotaside/compare/v0.1.5...v0.1.6) (2026-11-11)
+
+
+### Bug Fixes
+
+* print a command's usage for --help instead of running it ([#40](https://github.com/kacxx/jotaside/issues/40)) ([f8a6c17](https://github.com/kacxx/jotaside/commit/f8a6c178dbd5e6eec6ff1e8c734421f0ba639d60))
+
+## [0.1.5](https://github.com/kacxx/jotaside/compare/v0.1.4...v0.1.5) (2026-11-11)
+
+
+### Features
+
+* label Cursor chats from the first prompt that names a work item ([#37](https://github.com/kacxx/jotaside/issues/37)) ([624aed8](https://github.com/kacxx/jotaside/commit/624aed8070550ee4251459a5529081f51745b73b))
+
+## [0.1.4](https://github.com/kacxx/jotaside/compare/v0.1.3...v0.1.4) (2026-11-10)
+
+
+### Features
+
+* label a Claude Code session from its first prompt's work item ([#33](https://github.com/kacxx/jotaside/issues/33)) ([e21f962](https://github.com/kacxx/jotaside/commit/e21f96299f0749a79e9d9c1dfb8b75ef9c6cb617))
+
 ## [0.1.3](https://github.com/kacxx/jotaside/compare/v0.1.2...v0.1.3) (2026-11-06)
 
 

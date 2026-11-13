@@ -62,8 +62,47 @@ func Claude(ctx context.Context, r io.Reader, w io.Writer, open app.Opener) erro
 			}
 		},
 		parse:     parsePrompt("claude", claudeMeta),
+		label:     labelFirstPrompt,
 		exitBlock: true,
 	}.run(ctx, r, w, open)
+}
+
+// sdkEntrypoints are the CLAUDE_CODE_ENTRYPOINT values of headless and Agent
+// SDK runs: `claude -p` started from a clean environment (sdk-cli) and the
+// TypeScript and Python SDKs. Claude Code treats the three as one group. Such
+// runs get no automatic label (#32 D6).
+var sdkEntrypoints = map[string]bool{"sdk-cli": true, "sdk-ts": true, "sdk-py": true}
+
+// labelFirstPrompt labels a session with the work item its first prompt names
+// (#32): a done "session: <item>" jot, so it doesn't add to the inbox. It
+// checks the prompt before anything else, so a prompt without a work item
+// never reads the transcript or opens the database. It is silent: any failure
+// leaves the session unlabelled and the prompt goes through regardless.
+func labelFirstPrompt(ctx context.Context, prompt string, build func() app.CaptureRequest, open app.Opener) {
+	defer func() { _ = recover() }()
+	item, ok := app.WorkItem(prompt)
+	if !ok || sdkEntrypoints[os.Getenv(envEntrypoint)] {
+		return
+	}
+	req := build()
+	path, _ := req.Metadata[store.MetaTranscriptPath].(string)
+	if req.SessionID == "" || !app.FirstPrompt(path) {
+		return
+	}
+	saveLabel(ctx, req, item, open)
+}
+
+// saveLabel opens the database and saves "session: <item>" as req's session
+// label, as a done jot, unless the session already has one. Errors are
+// dropped: the prompt goes through either way.
+func saveLabel(ctx context.Context, req app.CaptureRequest, item string, open app.Opener) {
+	svc, err := open()
+	if err != nil {
+		return
+	}
+	defer svc.Close()
+	req.Text = app.SessionPrefix + " " + item
+	_, _, _ = svc.LabelSession(ctx, req)
 }
 
 // claudeMeta records the transcript path and, when well-formed, the Claude

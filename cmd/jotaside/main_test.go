@@ -5,12 +5,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"go/ast"
+	"go/parser"
+	"go/token"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -154,7 +158,7 @@ func TestFindAndSessions(t *testing.T) {
 	}
 	got := sh("find", "sup-4821")
 	for _, want := range []string{
-		"SUP-4821 token TTL\n",
+		"sup-4821\n", // the query, not the session's label (#35 D5)
 		"  claude · 2 jots · last 3d (#2)\n",
 		"  #1    3d     session: SUP-4821 token TTL\n",
 		"  #2    3d     SUP-4821 needs a backend ticket  (done)\n",
@@ -165,12 +169,73 @@ func TestFindAndSessions(t *testing.T) {
 			t.Fatalf("find output missing %q:\n%s", want, got)
 		}
 	}
-	if got := sh("find", "nope"); got != "No jots match \"nope\".\n" {
+	if got := sh("find", "nope"); got != "No sessions or jots match \"nope\".\n" {
 		t.Fatalf("find no match: %q", got)
 	}
 	got = sh("sessions")
 	if !strings.HasPrefix(got, "SUP-4821 token TTL\n  claude · 2 jots · last 3d (#2)\n  "+resumeAPI+"\n") {
 		t.Fatalf("sessions: %q", got)
+	}
+}
+
+// find lists the Claude Code sessions whose transcripts acted on a key, once
+// each, with the labelled ones (#35).
+func TestFindScansTranscripts(t *testing.T) {
+	db := filepath.Join(t.TempDir(), "jot.db")
+	t.Setenv("JOT_DB", db)
+	config := t.TempDir()
+	t.Setenv("CLAUDE_CONFIG_DIR", config)
+	if err := os.CopyFS(filepath.Join(config, "projects"), os.DirFS(filepath.Join("..", "..", "testdata", "transcripts"))); err != nil {
+		t.Fatal(err)
+	}
+	const cli, desk = "11111111-0000-4000-8000-000000000001", "22222222-0000-4000-8000-000000000002"
+	svc, err := app.Open(db, time.Second)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Capture(context.Background(), app.CaptureRequest{Text: "session: ABC-2 work", Source: "claude", SessionID: cli, Cwd: "/work/cli"}); err != nil {
+		t.Fatal(err)
+	}
+	svc.Close()
+	var out bytes.Buffer
+	if err := run([]string{"find", "ABC-1"}, nil, &out); err != nil {
+		t.Fatal(err)
+	}
+	got := out.String()
+	for _, want := range []string{
+		"ABC-1\n  claude · 1 jot · last today (#1)\n",
+		"ABC-1\n  claude · last today\n",
+		"claude --resume " + cli + "\n",
+		"claude --resume " + desk + "\n",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("find output missing %q:\n%s", want, got)
+		}
+	}
+	// The jotted session's transcript changed after its jot: it shows that.
+	old := now
+	now = func() time.Time { return time.Now().AddDate(0, 0, 3) }
+	t.Cleanup(func() { now = old })
+	future := time.Now().AddDate(0, 0, 2)
+	if err := os.Chtimes(filepath.Join(config, "projects", "-work-cli", cli+".jsonl"), future, future); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := run([]string{"find", "ABC-1"}, nil, &out); err != nil {
+		t.Fatal(err)
+	}
+	if want := "ABC-1\n  claude · 1 jot · last 1d (#1)\n"; !strings.HasPrefix(out.String(), want) {
+		t.Errorf("newest activity first, with its age: want prefix %q:\n%s", want, out.String())
+	}
+	if n := strings.Count(got, cli); n != 1 {
+		t.Errorf("session listed %d times:\n%s", n, got)
+	}
+	if strings.Contains(got, "ABC-2 work") || strings.Contains(got, "33333333") {
+		t.Errorf("label or scheduled run in the output:\n%s", got)
+	}
+	out.Reset()
+	if err := run([]string{"find", "CTX-3"}, nil, &out); err != nil || out.String() != "No sessions or jots match \"CTX-3\".\n" {
+		t.Errorf("key only in loaded context: %q %v", out.String(), err)
 	}
 }
 
@@ -774,7 +839,7 @@ func TestCLIDoneSeveralWithNote(t *testing.T) {
 	if got, err := sh("done", "1"); err != nil || got != "#1 already done\n" {
 		t.Fatalf("done again: %q %v", got, err)
 	}
-	if got, _ := sh("find", "wiki"); strings.Contains(got, "No jots match") {
+	if got, _ := sh("find", "wiki"); strings.Contains(got, "No sessions or jots match") {
 		t.Fatalf("find by note: %q", got)
 	}
 	// Re-running with a note replaces it; flags may come first.
@@ -1068,6 +1133,179 @@ func TestCLICheck(t *testing.T) {
 	for _, args := range [][]string{{"check"}, {"check", "x"}, {"check", "1", "--note", "n"}} {
 		if _, err := sh(args...); err == nil {
 			t.Errorf("%v must fail", args)
+		}
+	}
+}
+
+// readSpy records whether anything read from it, so a test can tell that
+// a command never started (mcp serves stdin, add reads it).
+type readSpy struct{ read bool }
+
+func (r *readSpy) Read([]byte) (int, error) { r.read = true; return 0, io.EOF }
+
+// Every command answers --help or -h as the first argument with its entry
+// in jotaside help, on stdout with exit 0, before it runs or the database
+// opens (#39).
+func TestCommandHelp(t *testing.T) {
+	var help bytes.Buffer
+	if code := mainCode([]string{"help"}, nil, &help, io.Discard); code != 0 {
+		t.Fatalf("help: exit %d", code)
+	}
+
+	for _, c := range commands {
+		for _, args := range [][]string{{"--help"}, {"-h"}, {"-h", "some", "text"}} {
+			// A fresh database path and working directory for each run: a
+			// file in either means the command ran or the database opened.
+			db := filepath.Join(t.TempDir(), "jot.db")
+			t.Setenv("JOT_DB", db)
+			cwd := t.TempDir()
+			t.Chdir(cwd)
+			stdin := &readSpy{}
+			var stdout, stderr bytes.Buffer
+			argv := append([]string{c.name}, args...)
+
+			code := mainCode(argv, stdin, &stdout, &stderr)
+
+			if code != 0 || stderr.Len() != 0 {
+				t.Fatalf("%v: exit %d, stderr %q", argv, code, stderr.String())
+			}
+			if got := stdout.String(); got != c.usage+"\n" || !strings.HasPrefix(got, "  jotaside "+c.name) {
+				t.Fatalf("%v: got %q, want %q", argv, got, c.usage+"\n")
+			}
+			if !strings.Contains(help.String(), stdout.String()) {
+				t.Fatalf("%v: %q is not in jotaside help", argv, stdout.String())
+			}
+			if stdin.read {
+				t.Fatalf("%v: read stdin", argv)
+			}
+			if _, err := os.Stat(db); !errors.Is(err, os.ErrNotExist) {
+				t.Fatalf("%v: database at %s: %v", argv, db, err)
+			}
+			if ents, _ := os.ReadDir(cwd); len(ents) != 0 {
+				t.Fatalf("%v: wrote %v to the working directory", argv, ents)
+			}
+		}
+	}
+
+	// A usage that runs onto a second line keeps it, in --help and in
+	// jotaside help.
+	var out bytes.Buffer
+	if err := run([]string{"inbox", "--help"}, nil, &out); err != nil {
+		t.Fatal(err)
+	}
+	want := "  jotaside inbox [-n N] [--older D]  list the newest inbox jots (default 20, 0 = all),\n" +
+		"                                optionally only those at least D days old\n"
+	if out.String() != want || !strings.Contains(help.String(), want) {
+		t.Fatalf("inbox --help: got %q, want %q", out.String(), want)
+	}
+}
+
+// jotaside help is built from the commands table, in order, between the
+// header and the environment section.
+func TestUsageFromCommands(t *testing.T) {
+	rest, ok := strings.CutPrefix(usage, usageHeader)
+	if !ok {
+		t.Fatalf("usage doesn't start with the header: %q", usage)
+	}
+	for _, c := range commands {
+		if rest, ok = strings.CutPrefix(rest, c.usage+"\n"); !ok {
+			t.Fatalf("usage lacks %s's entry in order: %q", c.name, rest)
+		}
+	}
+	if rest != usageFooter {
+		t.Fatalf("usage after the commands: %q", rest)
+	}
+}
+
+// --help after the first argument is data (#39 D4): part of the query,
+// or of the jot text. "add -h some text" prints help and saves nothing.
+func TestHelpLaterIsData(t *testing.T) {
+	t.Setenv("JOT_DB", filepath.Join(t.TempDir(), "jot.db"))
+	for cmd, nothing := range map[string]string{"find": "No sessions or jots", "search": "No jots"} {
+		var out bytes.Buffer
+		if err := run([]string{cmd, "foo", "--help"}, nil, &out); err != nil {
+			t.Fatal(err)
+		}
+		if want := nothing + " match \"foo --help\".\n"; out.String() != want {
+			t.Fatalf("%s foo --help: got %q, want %q", cmd, out.String(), want)
+		}
+	}
+	var out bytes.Buffer
+	if err := run([]string{"add", "-h", "some", "text"}, nil, &out); err != nil || !strings.HasPrefix(out.String(), "  jotaside add ") {
+		t.Fatalf("add -h some text: %q %v", out.String(), err)
+	}
+	out.Reset()
+	if err := run([]string{"inbox"}, nil, &out); err != nil || out.String() != "Inbox is empty.\n" {
+		t.Fatalf("inbox after add -h some text: %q %v", out.String(), err)
+	}
+	if err := run([]string{"add", "foo", "--help", "bar"}, nil, &bytes.Buffer{}); err != nil {
+		t.Fatal(err)
+	}
+	out.Reset()
+	if err := run([]string{"find", "foo", "--help"}, nil, &out); err != nil || !strings.Contains(out.String(), "#1") {
+		t.Fatalf("find foo --help: %q %v", out.String(), err)
+	}
+}
+
+// Every command the CLI dispatches has an entry in the commands table, so
+// --help never runs one (#39). The commands are read from the source: the
+// case labels of each "switch cmd" in run(), plus hook, which mainCode sends
+// to runHook. A new case without a table entry fails here.
+func TestCommandsTableMatchesDispatch(t *testing.T) {
+	f, err := parser.ParseFile(token.NewFileSet(), "main.go", nil, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Aliases of help and version, not commands of their own.
+	aliases := map[string]bool{"help": true, "-h": true, "--help": true, "--version": true}
+	dispatched := map[string]bool{"hook": true}
+	for _, d := range f.Decls {
+		fn, ok := d.(*ast.FuncDecl)
+		if !ok || fn.Name.Name != "run" {
+			continue
+		}
+		ast.Inspect(fn, func(n ast.Node) bool {
+			sw, ok := n.(*ast.SwitchStmt)
+			if !ok {
+				return true
+			}
+			if id, ok := sw.Tag.(*ast.Ident); !ok || id.Name != "cmd" {
+				return true
+			}
+			for _, st := range sw.Body.List {
+				for _, e := range st.(*ast.CaseClause).List {
+					lit, ok := e.(*ast.BasicLit)
+					if !ok || lit.Kind != token.STRING {
+						t.Fatalf("case %T in run's switch: want a string literal", e)
+					}
+					name, err := strconv.Unquote(lit.Value)
+					if err != nil {
+						t.Fatal(err)
+					}
+					if !aliases[name] {
+						dispatched[name] = true
+					}
+				}
+			}
+			return true
+		})
+	}
+	if len(dispatched) < 10 {
+		t.Fatalf("found only %v in run(): has the dispatch moved?", dispatched)
+	}
+	inTable := map[string]bool{}
+	for _, c := range commands {
+		if inTable[c.name] {
+			t.Fatalf("%s is in the commands table twice", c.name)
+		}
+		inTable[c.name] = true
+		if !dispatched[c.name] {
+			t.Errorf("%s is in the commands table but run() doesn't dispatch it", c.name)
+		}
+	}
+	for name := range dispatched {
+		if !inTable[name] {
+			t.Errorf("run() dispatches %q but the commands table has no entry for it, so --help would run it", name)
 		}
 	}
 }

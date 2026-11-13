@@ -15,7 +15,8 @@ An agent hook sees the prompt, saves it to a local SQLite database with its git
 context, and blocks it so the model never sees it. Jots are read back with the
 CLI or a read-only MCP server, and can be promoted to GitHub issues.
 
-Supported: Claude Code and Codex. Cursor is not supported (see below). The
+Supported: Claude Code and Codex. Cursor is not supported (see below),
+though its hook does label chats with their work item (#36). The
 command has been renamed twice, `jot` → `aside` → `jotaside`; see the first
 fact below before touching names.
 
@@ -29,7 +30,12 @@ fact below before touching names.
 - `internal/capture/` — the `>>` rule, deliberately narrow: `>>`, spaces
   or tabs (or non-breaking spaces), then a non-space character, after any leading `<system-reminder>` blocks.
 - `internal/app/` — the service layer: capture, inbox, done, `promote.go`
-  (jot to GitHub issue via `gh`), `sessions.go` (`find` and `sessions`).
+  (jot to GitHub issue via `gh`), `sessions.go` (`find` and `sessions`),
+  `scan.go` (`find`'s scan of Claude Code transcripts for prompts and tool
+  calls that name the query, #35),
+  `label.go` (a Claude Code chat's first prompt that names a work item saves
+  a done `session:` label, #32; in Cursor, the first prompt that names one,
+  #36).
 - `internal/store/` — SQLite (pure Go, no cgo), one `entries` table, owner-only
   file permissions.
 - `internal/setup/` — `jotaside setup`: finds the binary path, quotes it, and
@@ -37,6 +43,10 @@ fact below before touching names.
   `mcp.go` reads the agent's MCP config to spot a server under an old name.
 - `internal/gitctx/` — best-effort git context with a time budget.
 - `internal/mcp/` — the read-only MCP server (`inbox`, `show`, `search`, `find`, `sessions`, `activity`).
+- `cmd/worklog/`, `internal/worklog/` — a separate command that links a
+  markdown worklog's items to their sessions; see [docs/worklog.md](docs/worklog.md).
+  The log's grammar is in [docs/worklog-format.md](docs/worklog-format.md)
+  (`ledger.go` follows it).
 - `testdata/hooks/<agent>/` — recorded hook payloads used by tests and the
   smoke test.
 - `test/e2e/run.sh` — black-box install and hook flow, run in CI.

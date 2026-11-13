@@ -20,7 +20,9 @@ type Entry = store.Entry
 var ErrNotFound = store.ErrNotFound
 
 // Opener lazily opens a Service. Hooks call it only once a prompt is known to
-// be a jot, so ordinary prompts never touch SQLite or git.
+// be a jot, or names a work item that may label its session (a Claude Code
+// session's first prompt, or a Cursor chat's), so ordinary prompts never touch
+// SQLite or git.
 type Opener func() (*Service, error)
 
 // Service implements jot's use cases.
@@ -30,6 +32,9 @@ type Service struct {
 	now   func() time.Time
 	// desktop finds Claude Desktop's session files, for open links.
 	desktop desktopLinks
+	// transcripts is Claude Code's projects directory, which Find scans; ""
+	// (the default) skips the scan. See SetTranscriptsDir.
+	transcripts string
 }
 
 // New wraps an open store.
@@ -65,6 +70,8 @@ type CaptureRequest struct {
 	SessionID string
 	Cwd       string
 	Metadata  map[string]any
+	// Status is the status to save the jot with; "" means inbox.
+	Status string
 	// OnceKey, if set, names a string Metadata key that identifies the prompt
 	// (e.g. Cursor's generation_id). A second capture from the same Source
 	// with the same value returns the first entry instead of saving again.
@@ -106,6 +113,7 @@ func (s *Service) CaptureOnce(ctx context.Context, req CaptureRequest) (Entry, C
 	e := Entry{
 		Text:      text,
 		CreatedAt: s.now(),
+		Status:    req.Status,
 		Source:    req.Source,
 		SessionID: req.SessionID,
 		Cwd:       req.Cwd,

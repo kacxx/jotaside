@@ -166,7 +166,11 @@ behaviour: [docs/setup.md](docs/setup.md).
 
 The hook sees every prompt you send, but keeps only jots: prompts that start
 with `>>`, a space and some text (the [capture rule](docs/reference.md#capture-rules)
-has the details). Anything else passes through untouched and isn't stored.
+has the details). Anything else passes through untouched and isn't stored, with
+one exception: when a Claude Code chat's first prompt, or a Cursor chat's first
+prompt to do so, names a work item, such as `SUP-4821`, the item is saved as
+the chat's label (see
+[Get back to a chat](#get-back-to-a-chat)). The prompt itself isn't.
 
 For each jot, jotaside saves the text, the time, the agent and session it came
 from, the folder, the git repo, branch and commit, and the session's transcript
@@ -209,7 +213,8 @@ is `jotaside promote`, which posts to GitHub through your `gh` login, after aski
   and what the agent had just said when you jotted it, and creates it in that
   repo when you say yes. (`promote` always asks first.)
 - **Friday.** Someone asks about SUP-4821. `jotaside find SUP-4821` lists the
-  chats where you jotted about it, with the command to reopen each one.
+  chats where you jotted about it or worked on it, with the command to reopen
+  each one.
 
 ## Using jotaside
 
@@ -219,6 +224,7 @@ is `jotaside promote`, which posts to GitHub through your `gh` login, after aski
 | --- | --- |
 | `>> some thought` (in Claude Code or Codex) | Saved with the repo, branch, commit and chat; the model never sees it |
 | `>> session: SUP-4821 token TTL` | Also labels the chat, so `jotaside find` and `jotaside sessions` show why it exists |
+| `SUP-4821: fix the token TTL` as a Claude Code chat's first prompt | Goes to the model as normal, and labels the chat `session: SUP-4821` (saved as done, so it isn't in your inbox) |
 | `jotaside add some thought` (in a terminal) | Saved with the git context of the current directory |
 
 Only a prompt that **starts** with `>>`, a space and then text is a jot (extra
@@ -255,15 +261,20 @@ review` above); jotaside reads it from the transcript when listing the inbox.
 ### Get back to a chat
 
 Every jot made in an agent remembers its chat. `jotaside find` shows the chats
-where you jotted about something, and prints the command to reopen each one:
+where you jotted about something or, in Claude Code, worked on it, and prints
+the command to reopen each one:
 
 ```
 $ jotaside find SUP-4821
-SUP-4821 token TTL investigation
+SUP-4821
   claude · api@main · 2 jots · last 2d (#12)
   #11   2d     session: SUP-4821 token TTL investigation
   cd /Users/you/code/api && claude --resume 0f3c9a…
   jotaside open 12
+
+SUP-4821
+  claude · last 4d
+  cd /Users/you/code/api && claude --resume 7d21e0…
 
 Not in a session:
 #14   2026-10-04 18:03  SUP-4821 needs a backend ticket  [api@main]
@@ -274,7 +285,21 @@ jotaside find SUP-4821         # chats that mention it (ticket keys match as who
 jotaside sessions              # your recent chats and their labels
 ```
 
-Only chats with a jot in them can be found, so start a ticket's chat with
+`find` also reads Claude Code's transcripts, so it lists a Claude Code chat
+(terminal or Desktop) where you typed the key or one of the agent's tool calls
+used it, even with no jot in it, like the second chat above (such a chat gets a
+resume command but no `jotaside open`, since that opens a jot's chat). Tool output and
+the memory and instruction files loaded into a chat don't count, and neither
+do scheduled tasks or jotaside's own lookups (`jotaside find`, `search` or
+`show`, `worklog show`, or its MCP tools), so having the agent look a key up
+doesn't list the chat you asked in ([limits](docs/reference.md#finding-a-session)). A subagent's work counts for the chat that started it.
+
+Codex and Cursor chats are found only by their jots. In Claude Code, a chat whose first
+prompt names a work item gets one automatically (in Cursor, the first prompt
+that names one): a ticket key (`SUP-4821`),
+`owner/repo#N`, or a GitHub issue or pull request link, saved as
+`owner/repo#N`. The first one in the prompt is used. A label you jot yourself
+wins, so in Codex, or to label a chat that didn't start with its ticket, jot
 `>> session: SUP-4821 …`.
 
 On macOS and Windows, `jotaside open 12` opens the chat a jot came from, for jots
@@ -374,7 +399,7 @@ jotaside, so the skill matches the binary.
 | `jotaside inbox [-n N] [--older D]` | Open jots, newest first (default 20, `-n 0` for all) |
 | `jotaside show <id>` | One jot with its context |
 | `jotaside search <query>` | Search all jots |
-| `jotaside find <query>` | Chats with a matching jot, and how to resume them |
+| `jotaside find <query>` | Chats with a matching jot or Claude Code chats that worked on it, and how to resume them |
 | `jotaside open <id>` | Open the chat a jot came from (macOS and Windows; Claude Desktop and Codex app jots) |
 | `jotaside sessions [-n N]` | Recent chats with their labels (default 10) |
 | `jotaside activity <id>` | What a jot's own chat did after it (Claude Code and Claude Desktop jots) |

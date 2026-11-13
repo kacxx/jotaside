@@ -45,7 +45,11 @@ with your next message anyway (see [cursor.md](cursor.md)).
 
 - **Ordinary prompts and malformed hook payloads fail open**: the prompt goes
   through as if jotaside weren't installed. The prefix is checked *before* SQLite is
-  opened or git is run, so a normal prompt costs one small process start.
+  opened or git is run, so a normal prompt costs one small process start. The
+  exception is a prompt that names a work item, in a Claude Code chat's first
+  prompt or a Cursor chat with no label yet, which saves an
+  [automatic label](#automatic-labels); if that fails, nothing is shown and
+  the prompt still goes through.
 - **A recognised jot fails safe**: it is always blocked, even if saving failed.
   On failure the message says `✗ Jot NOT saved (<reason>)` and includes your
   original text so you can copy it.
@@ -62,19 +66,26 @@ with your next message anyway (see [cursor.md](cursor.md)).
 ## Finding a session
 
 Every jot captured by a hook records the agent's session id. `jotaside find`
-groups the jots that match a query by session, so you can get back to the chat
+groups the jots that match a query by session, and adds the Claude Code
+sessions whose transcripts show work on it, so you can get back to the chat
 where you worked on something:
 
 ```
 $ jotaside find SUP-4821
-SUP-4821 token TTL investigation
+SUP-4821
   claude · api@main · 3 jots · last 2d (#18)
   #12   5d     session: SUP-4821 token TTL investigation
   #18   2d     SUP-4821 needs a backend ticket
   cd /Users/you/code/api && claude --resume 0f3c9a…
+
+SUP-4821
+  claude · last 4d
+  cd /Users/you/code/api && claude --resume 7d21e0…
 ```
 
-`jotaside sessions` lists recent sessions the same way, without the matching jots.
+Each session is headed by the query, since it may not be the session's label;
+the session's matching jots follow. `jotaside sessions` lists recent sessions
+under their labels, without the matching jots.
 
 - **Label a session** by jotting `>> session: <why>` in it, for example
   `>> session: SUP-4821 token TTL investigation`. The newest `session:` jot
@@ -90,15 +101,108 @@ SUP-4821 token TTL investigation
   `SUP-4821`, only matches that key as a word, so it doesn't list `SUP-48210`
   or `XSUP-4821`. Any other character next to it counts as a separator,
   including `_` and `/`, so `SUP-4821_cache` and `feature/SUP-4821-fix`
-  match. Anything else is a substring search, as in `jotaside search`.
+  match. An `owner/repo#N` query matches as a whole reference too, so
+  `acme/widgets#3` doesn't list `acme/widgets#35`. Anything else is a
+  substring search, as in `jotaside search`.
   There is no list of ticket prefixes to configure and no tag table: the
   filter runs on the matching jots at query time.
 - Done jots are listed with `(done)`, as in `jotaside search`.
-- **Only chats with a jot in them are listed.** A chat where you never jotted
-  doesn't appear. Starting a ticket's chat with a `session:` jot makes it
-  findable.
+- **Claude Code transcripts are scanned** (`~/.claude/projects`, or
+  `$CLAUDE_CONFIG_DIR/projects`) each time `find` runs, terminal and Desktop
+  sessions alike. A session is listed if the query is in something you typed
+  (a prompt, including one sent while the agent was busy; a `!` command; a
+  slash command's arguments, but not the command's own text) or in the input
+  of one of its tool calls, matched as above. jotaside's own lookups don't
+  count, so a chat that only looked a key up isn't listed for it: a Bash or
+  PowerShell call whose command runs `jotaside find`, `search` or `show` or
+  `worklog show` (any case, `jotaside.exe` and a quoted path included), or a
+  call to one of jotaside's MCP tools (`mcp__jotaside__…`, or `mcp__aside__…`
+  from before the rename), is skipped. Not read:
+  `<system-reminder>` blocks, so memory and instruction files loaded into the
+  chat; tool output; the agent's replies; the summary Claude Code writes when
+  a chat runs out of context. Scheduled-task runs are left out. A subagent's
+  transcript (`<session>/subagents/*.jsonl`) counts for the session that
+  started it, as does an older `<project>/agent-<id>.jsonl`; if only its
+  subagents' files are left, the session can't be resumed and isn't listed.
+  A session with a transcript in two project folders is listed once, resumed
+  from the newer. A session found both ways is listed once, with
+  its jots; one found only in its transcript shows `claude · last <age>`
+  (from the transcript's last change) and its resume command, but no
+  `jotaside open` line even from Claude Desktop: the link is built from a
+  session's jots, and `jotaside open` takes a jot. Sessions are ordered by
+  their last activity, newest jot or transcript change, newest first, and
+  `last` shows it.
+  On a Mac with 2.3 GB of transcripts, a `find` took about 1 s with the
+  files in the disk cache (checked 2026-11-12, on the change in #35); with
+  them not cached, it hasn't been measured.
+- **Limits of the lookup rule.** It reads the command's text, so:
+  - a binary held in a variable (`$JS find ABC-1`) isn't recognised as a
+    lookup, and the call counts;
+  - a command that looks up and acts
+    (`jotaside find ABC-1 && git checkout -b abc-1-fix`) is skipped whole, so
+    the checkout doesn't count;
+  - a lookup asked in words in a typed prompt ("which sessions worked on
+    ABC-1?") still counts, since it's typed text.
+- **Codex and Cursor chats are found only by their jots.** A chat where you
+  never jotted doesn't appear, unless the hook labelled it
+  [automatically](#automatic-labels). Starting a ticket's chat with a
+  `session:` jot makes it findable in any agent.
 - Jots from `jotaside add` have no session. `find` lists matching ones under
   "Not in a session".
+
+### Automatic labels
+
+In Claude Code, when a chat's first prompt names a work item, the hook saves a
+`session: <item>` jot for it, as if you had jotted `>> session: <item>`. Cursor
+chats are labelled too, from the first prompt that names a work item (see
+below). The prompt still goes to the model, and nothing is printed. A work
+item is:
+
+| In the prompt | Label |
+| --- | --- |
+| a ticket key: uppercase letters and digits, a hyphen, digits, as a whole word (`SUP-4821`, `P2-14`) | `session: SUP-4821` |
+| `owner/repo#N` | `session: owner/repo#N` |
+| a GitHub issue or pull request URL, `https://github.com/owner/repo/issues/N` or `…/pull/N` | `session: owner/repo#N` |
+
+- **The first work item in the prompt** is the label. Leading
+  `<system-reminder>` blocks are skipped, as for jots.
+- **It's saved as done**, so it never adds to `jotaside inbox`. It shows in
+  `find`, `sessions` and `search`, with `(done)`.
+- **Only the first prompt.** A prompt is the first when the chat's transcript
+  doesn't exist yet or has no `user` record: Claude Code writes a prompt to
+  the transcript only after the hook lets it through (seen on Claude Code
+  2.1.321 and 2.1.322). A work item named in a
+  later prompt labels nothing. Jots don't count, since they never reach the
+  transcript.
+- **In Cursor, the first prompt that names a work item.** Cursor sends no
+  transcript, so the hook can't tell a chat's first prompt: a prompt that
+  names a work item labels a Cursor chat that has no `session:` jot yet, so
+  every later one labels nothing. The label has `source: cursor` and the
+  conversation id as its session, like a Cursor jot, and the reply stays
+  `{"continue":true}`. With both `jotaside hook cursor` and the Claude Code hook
+  installed, Cursor runs both on one prompt, and the label is saved once,
+  keyed on Cursor's `generation_id`. Cursor chats get labels even though `>>`
+  jots in Cursor are [not supported](cursor.md): a label is saved while the
+  prompt passes through, so Cursor's blocked-prompt bug doesn't touch it. A
+  `>> session:` jot to rename the chat does hit the bug; see
+  [cursor.md](cursor.md) for Cursor's edit-and-resend workaround. Checked by
+  replaying recorded Cursor payloads through both hooks; not yet checked in a
+  live Cursor chat.
+- **A label you jotted wins.** If the chat already has a `>> session:` jot, the
+  hook saves nothing; a `>> session:` jot after the automatic one becomes the
+  chat's name, because the newest one labels the chat. The automatic label jot
+  stays, so its item still finds the chat in `jotaside find`.
+- **Any key-shaped word counts**, with no list of ticket prefixes, so a first
+  prompt about `SHA-256` is labelled `session: SHA-256`. A `>> session:` jot
+  renames the chat, but `jotaside find SHA-256` still lists it.
+- **Not for headless or Agent SDK runs**: nothing is saved when
+  `CLAUDE_CODE_ENTRYPOINT` is `sdk-cli` (which `claude -p` sets when started
+  from a plain shell), `sdk-ts` or `sdk-py`. A
+  `claude -p` started from inside a Claude Desktop session inherits
+  `claude-desktop` instead and is labelled (seen on Claude Code 2.1.322).
+- **Not in Codex.** Codex prompts are never labelled.
+- A prompt with no work item is checked without reading the transcript or
+  opening the database.
 
 ## Activity
 

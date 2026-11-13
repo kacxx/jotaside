@@ -471,7 +471,7 @@ a minute on purpose.
 ## No Homebrew cask
 
 **Decided:** releases publish the archives and `checksums.txt` only. There's no
-Homebrew cask; install is `go install` or a release archive. Decided by Kevin
+Homebrew cask; install is `go install` or a release archive. Decided by the owner
 after the v0.1.3 release (kacxx/jotaside#27), done in #31.
 
 **Why:** the cask added in #21 was never published. `HOMEBREW_TAP_TOKEN` was
@@ -484,3 +484,96 @@ without Go: the user puts the binary on `PATH` and clears the quarantine flag
 **Revisit if:** there's a tap repo with a cask and a token that can write to
 it, and a release run that proves the publish before the README offers
 `brew install` again.
+
+## A Claude Code chat's first prompt labels it
+
+**Decided:** when a Claude Code chat's first prompt names a work item, the
+prompt hook saves a `session: <item>` jot, with status `done`, the chat's
+session id and source `claude`, and lets the prompt through. A work item is a
+ticket key (uppercase letters and digits, a hyphen, digits, as a whole word),
+`owner/repo#N`, or a GitHub issue or PR URL, saved as `owner/repo#N`; the
+first one in the prompt wins. A prompt is the first when the transcript is
+missing or has no `type: "user"` record. Nothing is saved for the `sdk-cli`,
+`sdk-ts` and `sdk-py` entrypoints, for a chat that already has a `session:`
+jot, or in Codex and Cursor. Settled in #32 (D1–D9, D6 revised).
+
+**Why:** a chat could be found only if someone remembered a `>> session:` jot,
+and on 2026-11-10 1 of 81 chats had one, while 46 named a work item in their
+first prompt. The hook gets no turn number, but Claude Code writes a prompt's
+`user` record only after the hook lets it through, so the transcript tells the
+first prompt apart; Codex and Cursor have no such check, which is why they are
+left out. Saving as `done` keeps labels out of the inbox, and the source stays
+`claude` because sessions are keyed by source and id. URLs are saved as
+`owner/repo#N` because `find` is a substring search. This picks keys out of
+text at capture time, which "Ticket keys are matched at query time" avoided
+for tags, but without a prefix allowlist the label doesn't depend on the
+hook's environment, and a wrong one such as `SHA-256` is replaced by any later
+`>> session:` jot.
+
+**Revisit if:** a chat you needed has no label because its work item came
+after the first prompt, or it was in Codex or Cursor (#32 D1's signal; #11
+indexes every session).
+
+## Cursor chats are labelled too
+
+**Decided:** the Cursor hook labels a chat as the Claude Code hook does (see
+[A Claude Code chat's first prompt labels it](#a-claude-code-chats-first-prompt-labels-it)),
+with source `cursor` and the conversation id as the session. The prompt that
+labels it is the first one that names a work item, in a chat that has no
+`session:` jot yet. The label is saved once when both the Cursor hook and the
+imported Claude Code hook see the prompt, keyed on Cursor's `generation_id`
+as jots are. Codex stays unlabelled. Settled in #36 (D1–D4); this replaces
+#32 D3 for Cursor, and is an exception to
+[Cursor is parked](#cursor-is-parked-until-cursor-fixes-its-bug).
+
+**Why:** the owner does ticket work in Cursor, and `jotaside find <KEY>` never
+listed those chats. Cursor sends no transcript (`transcript_path` is null),
+so the hook can't tell the first prompt as it does in Claude Code; labelling
+from the first prompt that names a work item is the closest it can get, and a
+chat already labelled is skipped, so later prompts label nothing. Cursor's
+blocked-prompt bug, the reason Cursor is parked, doesn't apply: a label is
+saved while the prompt passes through, and the reply stays
+`{"continue":true}`.
+
+**Cost:** a Cursor chat whose first prompts are about something else is
+labelled by the first one that names a work item, which may not be the chat's
+own. A later `>> session:` jot becomes the chat's name, but the old item
+still finds the chat in `jotaside find`, because the old label jot stays. In
+Cursor that jot also hits the blocked-prompt bug, so it needs Cursor's
+edit-and-resend workaround.
+
+**Revisit if:** Cursor chats are labelled with the wrong item often enough to
+matter, or Cursor starts sending a transcript.
+
+## `find` scans Claude Code transcripts instead of tagging sessions
+
+**Decided:** `jotaside find <query>` (and the MCP `find` tool, the same code)
+reads every Claude Code transcript under `~/.claude/projects` each time it
+runs, and lists the sessions whose typed prompts (slash-command arguments
+included) or tool-call inputs match the query, by `find`'s own rule, with
+`<system-reminder>` blocks stripped. Tool output, loaded context and the
+agent's replies are never read; scheduled-task runs are left out; jotaside's
+own lookups (a Bash or PowerShell `jotaside find`, `search` or `show` or
+`worklog show`, or an `mcp__jotaside__*` call, or `mcp__aside__*` from before
+the rename) don't count (D3, revised 2026-11-13); a subagent's
+transcript counts for its parent. These sessions are merged with the ones found
+by jots, once each, and every session is headed by the query. Always on, no
+flag. The first-prompt labels stay. Settled in #35 (D1–D10). `find`'s
+whole-word rule now covers `owner/repo#N` queries as well as ticket keys,
+since `worklog` looks those up and a substring match let `#3` find `#35`.
+
+**Why:** a session was findable only by its first prompt's label, so one that
+moved from ticket to ticket, or didn't start with one, was missed: on
+2026-11-12, `find` listed 2 of the 5 sessions that acted on one ticket. Tagging
+every prompt with the hook would need a sweep for the last turn, a watermark,
+de-duplication across Cursor's two hooks and a session-end hook that isn't
+known to fire on Desktop. Reading the transcripts at query time covers final
+turns, Desktop, and sessions from before the change, and stores nothing. Only
+typed prompts and tool calls count because memory and instruction files name
+keys in nearly every session, and lookups don't, because otherwise every
+lookup lists the session that ran it and lists grow with use. A fixed-string prefilter (any ASCII case) keeps
+it fast: the files without the query are never parsed. `FindEach` reads
+the transcripts once for many queries, for `worklog brief`.
+
+**Revisit if:** `find` gets too slow to use (then an index, #11), or a lookup
+misses a Codex or Cursor session, which have no transcript jotaside reads.

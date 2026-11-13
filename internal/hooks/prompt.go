@@ -30,15 +30,20 @@ type promptHook struct {
 	block func(reason string) any // the agent's blocking reply
 	alt   *promptHook             // handles payloads naming its event instead, if set
 
+	// label, if set, is called with an ordinary prompt (not a jot) before it
+	// passes through, and may save a label for its session. It must be silent
+	// and must not open the database unless the prompt names a work item.
+	label func(ctx context.Context, prompt string, build func() app.CaptureRequest, open app.Opener)
+
 	// exitBlock makes a block also return *BlockExit, so the host still
 	// blocks if it rejects the reply's JSON.
 	exitBlock bool
 
 	// parse decodes a payload that fits in memory into its event and prompt,
 	// plus a build func that constructs the request to save (Text is filled in
-	// by run). build is called only once the prompt is a confirmed jot, so its
-	// metadata allocation stays off the path ordinary prompts take. An error
-	// means a malformed payload.
+	// by run). build is called only once the prompt is a confirmed jot, or by
+	// label once a prompt names a work item, so its metadata allocation stays
+	// off the path ordinary prompts take. An error means a malformed payload.
 	parse func(data []byte) (event, prompt string, build func() app.CaptureRequest, err error)
 }
 
@@ -82,12 +87,15 @@ func (h promptHook) handle(ctx context.Context, p payload, w io.Writer, open app
 	}
 	text, ok := capture.Match(prompt)
 	if !ok {
+		if h.label != nil {
+			h.label(ctx, prompt, build, open)
+		}
 		return h.passThrough(w)
 	}
 	return h.blockJot(w, prompt, func() string {
 		// Build the request (and its metadata) only now that the prompt is a
-		// confirmed jot; an ordinary prompt pays no request or metadata
-		// allocation.
+		// confirmed jot; an ordinary prompt that names no work item pays no
+		// request or metadata allocation.
 		req := build()
 		req.Text = text
 		return save(ctx, open, req, prompt)
