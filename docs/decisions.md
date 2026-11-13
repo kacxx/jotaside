@@ -475,9 +475,10 @@ Homebrew cask; install is `go install` or a release archive. Decided by the owne
 after the v0.1.3 release (kacxx/jotaside#27), done in #31.
 
 **Why:** the cask added in #21 was never published. `HOMEBREW_TAP_TOKEN` was
-never set and `kacxx/homebrew-tap` had no cask, so goreleaser failed at the end
-of the v0.1.2 and v0.1.3 releases, after uploading the archives, and that
-stopped the automatic release smoke test both times. The cost is on macOS
+never set and the tap repository was never set up, so goreleaser failed at the
+end of every release from v0.1.2 to v0.1.8, seven in a row, after uploading the
+archives, and that stopped the automatic release smoke test each time. The
+cost is on macOS
 without Go: the user puts the binary on `PATH` and clears the quarantine flag
 (`xattr`) themselves, on install and on each update, as the README describes.
 
