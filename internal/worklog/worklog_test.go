@@ -405,6 +405,85 @@ func TestBriefFindsKeysAtOnce(t *testing.T) {
 	}
 }
 
+// A session stamped on several open items is listed once, after the items,
+// with its count; sessions found by key stay beside their items (#47).
+func TestBriefListsASharedStampOnce(t *testing.T) {
+	file, claude, startDir := repo(t)
+	log := sample + `
+## Logged by others
+id: by-others · opened: 2026-09-01
+- [ ] First logged by the coordinator — me · ABC-123 · chat:0a1b2c3d
+- [ ] Second logged by the coordinator — me · chat:0a1b2c3d
+- [ ] Logged once by another session — me · chat:9f8e7d6c
+- [ ] Logged on another machine — me · chat:deadbeef
+- [ ] Also logged on another machine — me · chat:deadbeef
+`
+	if err := os.WriteFile(file, []byte(log), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	proj := filepath.Join(claude, "projects", "some-project")
+	rec := `{"type":"user","cwd":` + quoteJSON(startDir) + `}` + "\n"
+	if err := os.WriteFile(filepath.Join(proj, sessionB+".jsonl"), []byte(rec), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	keyed := app.Session{Source: "claude", ID: "11112222-3333-4444-8555-666677778888", Cwd: "/work/x"}
+	find := func(_ context.Context, q string) ([]app.Session, []app.Entry, error) {
+		if q == "ABC-123" {
+			return []app.Session{keyed}, nil, nil
+		}
+		return nil, nil, nil
+	}
+	out, _, code := caller{file: file, claude: claude, find: find}.run(t, "brief")
+	if code != 0 {
+		t.Fatalf("brief: code %d", code)
+	}
+
+	resumeA := app.Session{Source: "claude", ID: sessionA, Cwd: startDir}.ResumeCommand()
+	if n := strings.Count(out, resumeA); n != 1 {
+		t.Errorf("session A, stamped on 2 open items, listed %d times, want once:\n%s", n, out)
+	}
+	if !strings.Contains(out, "\n  chat:0a1b2c3d, on 2 items: "+resumeA+"\n") {
+		t.Errorf("no line for session A with its count of open items (its done item doesn't count):\n%s", out)
+	}
+	if n := strings.Count(out, "chat:deadbeef, on 2 items: session not found"); n != 1 || strings.Contains(out, "chat:deadbeef: ") {
+		t.Errorf("a stamp with no session, on 2 items, isn't listed once:\n%s", out)
+	}
+	if strings.Contains(out, "Second logged by the coordinator — me · chat:0a1b2c3d\n      no session found") {
+		t.Errorf("an item whose only session is listed below says no session found:\n%s", out)
+	}
+	// A session stamped on one item stays beside it.
+	resumeB := app.Session{Source: "claude", ID: sessionB, Cwd: startDir}.ResumeCommand()
+	if !strings.Contains(out, "Logged once by another session — me · chat:9f8e7d6c\n      chat:9f8e7d6c: "+resumeB+"\n") {
+		t.Errorf("session B, stamped on one item, isn't beside it:\n%s", out)
+	}
+	// The key-matched session is beside each of the 3 open items naming ABC-123.
+	if n := strings.Count(out, "      ABC-123: "+keyed.ResumeCommand()+"\n"); n != 3 {
+		t.Errorf("key-matched session beside %d items, want 3:\n%s", n, out)
+	}
+
+	// show keeps every session beside its item.
+	out, _, _ = caller{file: file, claude: claude, find: find}.run(t, "show", "logged by the coordinator")
+	if n := strings.Count(out, "      chat:0a1b2c3d: "+resumeA+"\n"); n != 2 || strings.Contains(out, "on 2 items") {
+		t.Errorf("show lists session A beside %d items, want 2:\n%s", n, out)
+	}
+
+	// A session found by a key on an item it's stamped on counts as stamped
+	// there, so it's listed below, not beside it (a coordinating session's own
+	// worklog add names the key); it stays beside the items it isn't stamped on.
+	both := func(_ context.Context, q string) ([]app.Session, []app.Entry, error) {
+		if q == "ABC-123" {
+			return []app.Session{{Source: "claude", ID: sessionA, Cwd: startDir}}, nil, nil
+		}
+		return nil, nil, nil
+	}
+	out, _, _ = caller{file: file, claude: claude, find: both}.run(t, "brief")
+	if !strings.Contains(out, "\n  chat:0a1b2c3d, on 2 items: "+resumeA+"\n") ||
+		strings.Contains(out, "First logged by the coordinator — me · ABC-123 · chat:0a1b2c3d\n      ABC-123: ") ||
+		strings.Count(out, "      ABC-123: "+resumeA+"\n") != 2 {
+		t.Errorf("session A, stamped on 2 items and found by ABC-123 on 3:\n%s", out)
+	}
+}
+
 func TestWriteRefusals(t *testing.T) {
 	t.Run("a remote", func(t *testing.T) {
 		file, claude, _ := repo(t)
