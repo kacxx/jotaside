@@ -40,6 +40,15 @@ worklog brief                     # every open item with its sessions
   their items' work items in one read: on a Mac with 2.3 GB of transcripts, a
   `brief` with 76 open items naming 54 keys took about 4 s, against about
   100 s with one `find` per key (checked 2026-11-12, on the change in #35).
+- **`brief`** lists a session stamped on more than one open item once, after
+  the items, as `chat:<stamp>, on N items: <resume command>` (with the first
+  stamp seen, if the items use different lengths), instead of beside each
+  item: a session that logs on behalf of others can be stamped on dozens. The
+  items still show their stamps. The same stamp text on several items that
+  matches no session is listed once the same way. A session found by a work
+  item stays beside the items it isn't stamped on; on an item it's also
+  stamped on, it counts as stamped, since a session that ran `worklog add`
+  with a key is found by that key. `show` keeps every session beside its item.
 
 ## When it won't write
 

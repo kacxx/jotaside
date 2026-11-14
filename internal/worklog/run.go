@@ -37,6 +37,7 @@ git repo has a remote.
 
 A session is found from the stamp on the item, then from jotaside's find for
 each work item the line names. Each is printed with a command that resumes it.
+brief lists a session stamped on more than one open item once, after the items.
 
 Environment:
   WORKLOG_LEDGER            the log (default: ~/worklog/ledger.md)
@@ -127,7 +128,7 @@ func run(ctx context.Context, cmd string, args []string, env Env, stdout, stderr
 			return nil
 		}
 		look.Prefetch(ctx, items)
-		printItems(ctx, stdout, look, items)
+		printItems(stdout, items, look.ForEach(ctx, items), nil)
 		return nil
 	case "brief":
 		content, err := os.ReadFile(file)
@@ -145,17 +146,26 @@ func run(ctx context.Context, cmd string, args []string, env Env, stdout, stderr
 			return nil
 		}
 		look.Prefetch(ctx, open)
-		printItems(ctx, stdout, look, open)
+		refs := look.ForEach(ctx, open)
+		shared := sharedStamps(refs)
+		printItems(stdout, open, refs, shared)
+		printShared(stdout, shared)
 		return nil
 	default:
 		return fmt.Errorf("unknown command %q; run worklog help", cmd)
 	}
 }
 
-// printItems prints items under their workstreams, each with its sessions.
-func printItems(ctx context.Context, w io.Writer, look *Lookup, items []Item) {
+// printItems prints items under their workstreams, each with its sessions
+// (refs[i] for items[i]) except the stamped ones in shared, which are listed
+// once by printShared.
+func printItems(w io.Writer, items []Item, refs [][]Ref, shared []sharedStamp) {
+	hide := map[string]bool{}
+	for _, s := range shared {
+		hide[s.ref.group()] = true
+	}
 	ws := "\x00"
-	for _, it := range items {
+	for i, it := range items {
 		name := workstream{title: it.Workstream, id: it.WorkstreamID}.name()
 		if name != ws {
 			if ws != "\x00" {
@@ -174,24 +184,63 @@ func printItems(ctx context.Context, w io.Writer, look *Lookup, items []Item) {
 		if p := it.Problem(); p != "" {
 			fmt.Fprintf(w, "      line %d doesn't parse: %s\n", it.Line+1, p)
 		}
-		refs := look.For(ctx, it)
-		if len(refs) == 0 {
+		if len(refs[i]) == 0 {
 			fmt.Fprintln(w, "      no session found")
 		}
-		for _, r := range refs {
-			switch {
-			case r.ID == "":
-				fmt.Fprintf(w, "      %s: session not found (removed, or on another machine)\n", r.Via)
-			case r.Resume == "" && r.Label != "":
-				fmt.Fprintf(w, "      %s (%s): session %s, no resume command\n", r.Via, r.Label, r.ID)
-			case r.Resume == "":
-				fmt.Fprintf(w, "      %s: session %s, no resume command\n", r.Via, r.ID)
-			case r.Label != "":
-				fmt.Fprintf(w, "      %s (%s): %s\n", r.Via, r.Label, r.Resume)
-			default:
-				fmt.Fprintf(w, "      %s: %s\n", r.Via, r.Resume)
+		for _, r := range refs[i] {
+			if r.Stamp && hide[r.group()] {
+				continue
 			}
+			fmt.Fprintf(w, "      %s\n", r.line(0))
 		}
+	}
+}
+
+// sharedStamp is a session stamped on more than one of the items, or a stamp
+// on more than one that matches no session, with the number of items.
+type sharedStamp struct {
+	ref Ref
+	n   int
+}
+
+// sharedStamps returns what printShared lists: the stamped sessions on more
+// than one item, in the order first seen. A coordinating session can be
+// stamped on dozens of items, and its resume command is the same on each (#47).
+func sharedStamps(refs [][]Ref) []sharedStamp {
+	var order []string
+	first := map[string]Ref{}
+	count := map[string]int{}
+	for _, item := range refs {
+		for _, r := range item {
+			if !r.Stamp {
+				continue
+			}
+			g := r.group()
+			if _, ok := first[g]; !ok {
+				first[g] = r
+				order = append(order, g)
+			}
+			count[g]++
+		}
+	}
+	var out []sharedStamp
+	for _, g := range order {
+		if count[g] > 1 {
+			out = append(out, sharedStamp{first[g], count[g]})
+		}
+	}
+	return out
+}
+
+// printShared lists the sessions stamped on several items, once each.
+func printShared(w io.Writer, shared []sharedStamp) {
+	if len(shared) == 0 {
+		return
+	}
+	fmt.Fprintln(w)
+	fmt.Fprintln(w, "Sessions stamped on several open items")
+	for _, s := range shared {
+		fmt.Fprintf(w, "  %s\n", s.ref.line(s.n))
 	}
 }
 

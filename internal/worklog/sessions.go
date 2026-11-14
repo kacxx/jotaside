@@ -2,6 +2,7 @@ package worklog
 
 import (
 	"context"
+	"fmt"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -20,6 +21,17 @@ type Ref struct {
 	Label string
 	// Resume reopens the session; "" when there is no way to.
 	Resume string
+	// Stamp is whether it was found from a stamp on the item.
+	Stamp bool
+}
+
+// group names the session a stamp ref found, or the stamp itself when it
+// matches no session, so brief can count the items it's on.
+func (r Ref) group() string {
+	if r.ID != "" {
+		return r.ID
+	}
+	return r.Via
 }
 
 // Lookup finds an item's sessions.
@@ -84,7 +96,7 @@ func (l *Lookup) For(ctx context.Context, it Item) []Ref {
 			found = true
 			if s := app.ClaudeSession(p); !seen[s.ID] {
 				seen[s.ID] = true
-				refs = append(refs, Ref{Via: via, ID: s.ID, Resume: s.ResumeCommand()})
+				refs = append(refs, Ref{Via: via, ID: s.ID, Resume: s.ResumeCommand(), Stamp: true})
 			}
 		}
 		if found {
@@ -97,11 +109,11 @@ func (l *Lookup) For(ctx context.Context, it Item) []Ref {
 			found = true
 			if !seen[s.ID] {
 				seen[s.ID] = true
-				refs = append(refs, Ref{Via: via, ID: s.ID, Label: s.LabelText(), Resume: s.ResumeCommand()})
+				refs = append(refs, Ref{Via: via, ID: s.ID, Label: s.LabelText(), Resume: s.ResumeCommand(), Stamp: true})
 			}
 		}
 		if !found {
-			refs = append(refs, Ref{Via: via})
+			refs = append(refs, Ref{Via: via, Stamp: true})
 		}
 	}
 	if l.Find == nil {
@@ -124,6 +136,34 @@ func (l *Lookup) For(ctx context.Context, it Item) []Ref {
 		}
 	}
 	return refs
+}
+
+// ForEach returns For for each item.
+func (l *Lookup) ForEach(ctx context.Context, items []Item) [][]Ref {
+	refs := make([][]Ref, len(items))
+	for i, it := range items {
+		refs[i] = l.For(ctx, it)
+	}
+	return refs
+}
+
+// line is how the ref is printed; n > 1 adds the number of items it's on.
+func (r Ref) line(n int) string {
+	name := r.Via
+	if r.Label != "" {
+		name += " (" + r.Label + ")"
+	}
+	if n > 1 {
+		name += fmt.Sprintf(", on %d items", n)
+	}
+	switch {
+	case r.ID == "":
+		return name + ": session not found (removed, or on another machine)"
+	case r.Resume == "":
+		return name + ": session " + r.ID + ", no resume command"
+	default:
+		return name + ": " + r.Resume
+	}
 }
 
 // jotted returns jotaside's sessions, listed once.
