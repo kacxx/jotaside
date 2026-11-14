@@ -57,7 +57,7 @@ fact below before touching names.
 gofmt -l .                 # must print nothing
 go vet ./...
 go test -race ./...
-golangci-lint run          # v2.14.0, config in .golangci.yml
+go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run  # the version CI pins; a v1 install can't read the v2 .golangci.yml
 bash test/e2e/run.sh       # end-to-end, throwaway database
 bash test/release/smoke.sh  # install the latest release (TAG=vX.Y.Z for another) as a new user would
 bash scripts/third-party-notices.sh  # after changing dependencies: regenerate THIRD_PARTY_NOTICES (CI checks it)
