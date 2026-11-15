@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.9](https://github.com/kacxx/jotaside/compare/v0.1.8...v0.1.9) (2026-11-14)
+
+
+### Features
+
+* worklog brief lists a session stamped on many items once ([#51](https://github.com/kacxx/jotaside/issues/51)) ([027fad6](https://github.com/kacxx/jotaside/commit/027fad6abda5299ca33c416a320120b4aaf94490))
+
 ## [0.1.8](https://github.com/kacxx/jotaside/compare/v0.1.7...v0.1.8) (2026-11-13)
 
 
