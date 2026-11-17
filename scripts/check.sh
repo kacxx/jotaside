@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
-# Runs this repo's checks, the same ones CI runs: the linters first, then the
-# tests. Exits non-zero if any failed.
+# Runs this repo's linters and unit tests: the linters first, then the tests.
+# Exits non-zero if any failed. CI's lint job runs its --lint-only half; CI's
+# test and notices jobs run the same tests as their own steps, and CI also
+# runs the end-to-end test, the Windows tests and the genericity check.
 #
 #   scripts/check.sh              linters, then tests
 #   scripts/check.sh --lint-only  linters only (CI's lint job)
@@ -17,7 +19,13 @@
 # blocked. Go is required either way.
 #
 # golangci-lint: a golangci-lint on PATH is used when it's v2.14.0; otherwise
-# it runs through `go run` at that version (the first run downloads it).
+# it runs through `go run` at that version (the first run downloads it). Under
+# CI=true a golangci-lint of another version fails the run: ci.yml installs it,
+# so its version and this one have drifted apart.
+#
+# On Windows (Git Bash), gofmt is skipped, since a CRLF checkout makes it list
+# every file (CI checks it on Linux), and go test runs without -race when cgo
+# is off, since the race detector needs it.
 set -u
 cd "$(dirname "$0")/.." || exit 1
 
@@ -56,8 +64,15 @@ if ! command -v go > /dev/null 2>&1; then
   exit 1
 fi
 
+windows=0
+case "$(uname -s)" in MINGW*|MSYS*|CYGWIN*) windows=1 ;; esac
+
 gofmt_check() {
   local out
+  if [ "$windows" -eq 1 ]; then
+    echo "WARN gofmt skipped on Windows (CRLF checkouts); CI checks it on Linux"
+    return 0
+  fi
   out=$(gofmt -l .) || return 1
   [ -z "$out" ] && return 0
   echo "These files need gofmt -w:"
@@ -69,6 +84,9 @@ golangci() {
   if command -v golangci-lint > /dev/null 2>&1 \
      && golangci-lint version 2>/dev/null | grep -q "version v\{0,1\}$golangci_version "; then
     golangci-lint run
+  elif [ "${CI:-}" = true ] && command -v golangci-lint > /dev/null 2>&1; then
+    echo "FAIL golangci-lint on PATH isn't v$golangci_version: ci.yml and scripts/check.sh pin different versions"
+    return 1
   else
     go run "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v$golangci_version" run
   fi
@@ -93,7 +111,12 @@ if [ "$lint_only" -eq 0 ]; then
     echo "== the tests were NOT run: fix the linters first"
   else
     run "go vet" go vet ./...
-    run "go test -race" go test -race ./...
+    if [ "$(go env CGO_ENABLED)" = 1 ]; then
+      run "go test -race" go test -race ./...
+    else
+      echo "WARN cgo is off, so go test runs without -race"
+      run "go test" go test ./...
+    fi
     run notices bash scripts/third-party-notices.sh --check
     if needs jq https://jqlang.org/download/; then
       run "lint-skills tests" bash ci/__tests__/lint-skills.test.sh

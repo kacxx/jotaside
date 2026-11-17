@@ -54,7 +54,7 @@ fact below before touching names.
 ## Commands
 
 ```sh
-bash scripts/check.sh      # the checks CI runs: linters, then tests (run before every push)
+bash scripts/check.sh      # linters, then unit tests (run before every push)
 bash scripts/check.sh --lint-only  # linters only, as CI's lint job
 bash test/e2e/run.sh       # end-to-end, throwaway database
 bash test/release/smoke.sh  # install the latest release (TAG=vX.Y.Z for another) as a new user would
@@ -73,7 +73,11 @@ missing shellcheck or jq is a warning locally and a failure in CI. With
 `claude` on `PATH`, the manifest lint also runs `claude plugin validate .`.
 
 CI (`ci.yml`) runs `test` on Ubuntu and Windows, `e2e`, `notices`, and `lint`,
-which is `scripts/check.sh --lint-only` plus the manifest lint's tests.
+which is `scripts/check.sh --lint-only` plus the manifest lint's tests. So
+`scripts/check.sh` passing locally doesn't cover `e2e`, the Windows tests or
+the genericity check. On Windows it skips gofmt (CRLF checkouts) and runs
+`go test` without `-race` when cgo is off.
+
 Release-please opens its release PR with the default token, which starts no
 workflows, so run CI on it by hand before merging:
 `gh workflow run CI --ref <release branch>` (the checks then show on the PR).

@@ -7,8 +7,9 @@
 # Checks:
 #   - .claude-plugin/plugin.json and marketplace.json exist and parse, and
 #     marketplace.json lists the plugin by plugin.json's name. The versions are
-#     compared only when both files set one (marketplace.json here pins a git
-#     ref instead, so plugin.json is usually the only place a version is set).
+#     compared only when both files set one. When the listing's source pins a
+#     version tag (a ref of v<version>, as release-please sets it here), the tag
+#     must match plugin.json's version.
 #   - every skills/*/SKILL.md opens with --- frontmatter whose `name` is its
 #     directory's name and whose `description` isn't empty. Outside quotes a #
 #     at the start or after a space begins a YAML comment, so
@@ -80,6 +81,11 @@ if [ "$parsed" -eq 1 ]; then
         fail "version differs: $plugin $version, $market $v"
       fi
     done < <(jq -r --arg n "$name" '.plugins[]? | select(.name == $n) | .version // empty' "$market" | tr -d '\r')
+    while IFS= read -r ref; do
+      if [ -n "$version" ] && [ "$ref" != "v$version" ]; then
+        fail "version differs: $plugin $version, $market source.ref $ref"
+      fi
+    done < <(jq -r --arg n "$name" '.plugins[]? | select(.name == $n) | .source.ref? // empty | select(test("^v[0-9]"))' "$market" | tr -d '\r')
   fi
 fi
 

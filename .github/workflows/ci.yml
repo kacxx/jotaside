@@ -102,8 +102,9 @@ jobs:
           version: v2.14.0
           install-only: true
 
+      # The runner image usually has it; install it only if not.
       - name: Install shellcheck
-        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+        run: command -v shellcheck || { sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck; }
 
       # gofmt, golangci-lint, shellcheck and the plugin manifest lint, as
       # locally. CI=true, so a missing linter fails rather than being skipped.

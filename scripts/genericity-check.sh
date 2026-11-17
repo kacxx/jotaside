@@ -9,15 +9,20 @@
 #   scripts/genericity-check.sh --stdin LABEL  # stdin, checked as if it were file LABEL
 #
 # Rules:
-#   path   /Users/<name>/, /home/<name>/ or C:\Users\<name>\ where <name> isn't
-#          a placeholder (you, me, dev, user, runner, ...).
+#   path   /Users/<name>/, /home/<name>/ or C:\Users\<name>\, or the same path
+#          as Claude Code names a project folder (-Users-<name>-...), where
+#          <name> isn't a placeholder (you, me, dev, user, runner, ...). Tree
+#          mode checks tracked file names too.
 #   email  an email address, unless it's an example domain, a GitHub noreply
-#          address, the co-author trailer's noreply address, a git@ SSH remote
+#          address, GitHub's own (Dependabot signs off as support@github.com),
+#          the co-author trailer's noreply address, a git@ SSH remote
 #          or URL credentials (user:token@host). Not checked in the generated
 #          THIRD_PARTY_NOTICES, whose licences name their authors.
 #   repo   github.com/OWNER/REPO (also github.com:OWNER/REPO, with or without
-#          a port) and OWNER/REPO#N,
-#          unless OWNER is on the allowlist below or OWNER/REPO is a Go module
+#          a port) and OWNER/REPO#N, unless OWNER is on the allowlist below,
+#          is a GitHub page rather than an owner (settings, marketplace, ...;
+#          for orgs/, users/ and the API's repos/, the next part is the owner
+#          checked), or OWNER/REPO is a Go module
 #          this repo depends on (go.mod, go.sum). go.mod, go.sum and the
 #          generated THIRD_PARTY_NOTICES aren't checked for it; in ci.yml and
 #          AGENTS.md a module path without a scheme (a tool such as
@@ -47,14 +52,17 @@ safe_users='you|me|x|u|dev|user|tester|test|runner|example|alice|bob|john|shared
 # Owners that are this project, placeholders in docs and tests, or public
 # tools the docs and workflows name.
 safe_owners='kacxx|example|acme|xacme|owner|xowner|org|my-org|abc-1|o|a|actions|github|golang|golangci|googleapis|koalaman'
+# github.com/<page>/... paths that are GitHub's own pages, not an owner.
+github_pages='settings|marketplace|features|topics|notifications|apps|collections|search|explore|login|about|pricing|enterprise|site|security|contact|new|codespaces|issues|pulls'
 # OWNER/REPO of every GitHub-hosted Go module the build depends on.
 deps=$(cat go.mod go.sum 2>/dev/null | grep -oE 'github\.com/[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+' | cut -d/ -f2,3 | sort -u | tr '[:upper:]' '[:lower:]')
 
-path_re='/(Users|home)/[A-Za-z][A-Za-z0-9._-]*|[A-Za-z]:\\{1,2}Users\\{1,2}[A-Za-z][A-Za-z0-9._-]*'
+path_re='/(Users|home)/[A-Za-z][A-Za-z0-9._-]*|[A-Za-z]:\\{1,2}Users\\{1,2}[A-Za-z][A-Za-z0-9._-]*|(^|[^A-Za-z0-9-])-(Users|home)-[A-Za-z][A-Za-z0-9._]*'
 email_re='(^|[^A-Za-z0-9._%+:/-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'
-safe_email_re='@([a-z0-9-]+\.)*example\.(com|org|net)$|@users\.noreply\.github\.com$|^noreply@anthropic\.com$|^git@'
-repo_url_re='(https?://|ssh://|[A-Za-z0-9._%+-]+@)?github\.com(:[0-9]+/|[:/])[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+'
-repo_ref_re='(^|[^A-Za-z0-9_./-])[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+#[0-9]+'
+safe_email_re='@([a-z0-9-]+\.)*example\.(com|org|net)$|@users\.noreply\.github\.com$|^(support|noreply)@github\.com$|^noreply@anthropic\.com$|^git@'
+repo_url_re='(https?://|ssh://|[A-Za-z0-9._%+-]+@)?github\.com(:[0-9]+/|[:/])[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+(/[A-Za-z0-9][A-Za-z0-9-]*)?'
+# A numbered anchor (decisions.md#12-why) isn't an issue reference.
+repo_ref_re='(^|[^A-Za-z0-9_./-])[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+#[0-9]+([^A-Za-z0-9_-]|$)'
 
 hits=0 scanned=0
 hit() { printf 'FAIL [%s] %s:%s\n' "$1" "$2" "$3"; hits=$((hits + 1)); }
@@ -81,11 +89,16 @@ allowed_repo() {
       case $file in
         .github/workflows/ci.yml|AGENTS.md) case $m in *://*|*@*) ;; *) return 0 ;; esac ;;
       esac ;;
-    *) or=$(printf '%s' "$m" | sed -E 's/^[^A-Za-z0-9]//; s/#[0-9]+$//') ;;
+    *) or=$(printf '%s' "$m" | sed -E 's/^[^A-Za-z0-9]//; s/#[0-9]+.*$//') ;;
   esac
   or=$(printf '%s' "$or" | tr '[:upper:]' '[:lower:]')
-  or=${or%.git}
   owner=${or%%/*}
+  case $owner in
+    orgs|users|repos|sponsors) or=${or#*/}; owner=${or%%/*} ;;
+    *) printf '%s\n' "$owner" | grep -qxE "$github_pages" && return 0 ;;
+  esac
+  or=$(printf '%s' "$or" | cut -d/ -f1,2)
+  or=${or%.git}
   printf '%s\n' "$owner" | grep -qxE "$safe_owners" && return 0
   printf '%s\n' "$deps" | grep -qxF -- "$or"
 }
@@ -103,7 +116,9 @@ scan() {
 
   while IFS=: read -r i line; do
     while IFS= read -r m; do
-      if ! printf '%s\n' "${m##*[/\\]}" | grep -qixE "$safe_users"; then report path "$i"; break; fi
+      # The name: the part after Users or home and its separator.
+      m=$(printf '%s' "$m" | sed -E 's/.*(Users|home)[-/\\]+//')
+      if ! printf '%s\n' "$m" | grep -qixE "$safe_users"; then report path "$i"; break; fi
     done < <(printf '%s\n' "$line" | grep -oE "$path_re")
   done < <(grep -nE "$path_re" "$text")
 
@@ -135,6 +150,8 @@ case $mode in
       # Text files only: grep -I skips binaries (and empty files).
       [ -f "$f" ] && grep -qI '' "$f" && scan "$f" "$f"
     done < <(git ls-files -z)
+    git ls-files > "$tmp/names"
+    scan "file names" "$tmp/names"
     ;;
   diff)
     git rev-parse --verify -q "$arg^{commit}" > /dev/null || { echo "error: --diff: no such commit: $arg" >&2; exit 2; }
@@ -147,6 +164,8 @@ case $mode in
         /^\+/ { print substr($0, 2) > text; print n > map; n++ }'
       [ -s "$tmp/map" ] && scan "$f" "$tmp/text" "$tmp/map"
     done < <(git diff -z --name-only --diff-filter=d "$arg...HEAD")
+    git diff --name-only --diff-filter=AR "$arg...HEAD" > "$tmp/names"
+    [ -s "$tmp/names" ] && scan "file names" "$tmp/names"
     ;;
   stdin)
     scan "$arg" "$tmp/stdin"

@@ -6,6 +6,8 @@
 set -u
 here=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 check="$here/genericity-check.sh"
+# The cases set their own deny patterns; CI's secret mustn't reach them.
+unset GENERICITY_DENY_PATTERNS
 
 pass=0; failures=0
 ok() { pass=$((pass + 1)); printf '  ok   %s\n' "$1"; }
@@ -43,6 +45,9 @@ clean "a placeholder home folder" README.md "/Users/you/go/bin/jotaside and /hom
 clean "the CI runner's home" ci.log "/home/runner/work/repo"
 clean "a placeholder Windows home" docs/setup.md 'C:\Users\you\go\bin\jotaside.exe'
 clean "a placeholder with a space" x_test.go '"/Users/John Smith/go/bin/jotaside"'
+hit "a home folder as Claude Code names a project folder" x.json "\"/p/-Us""ers-jsmith-real-code-app/1.jsonl\""
+clean "  with a placeholder name" x.json '"/p/-Users-dev-src-webapp/1.jsonl"'
+clean "  not a flag such as --home-dir" README.md 'run with --home-dir x'
 
 echo "email addresses"; rule=email
 hit "a real-looking address" README.md "mail ${addr}${dom} for access"
@@ -50,6 +55,7 @@ hit "an address at the start of a line" README.md "${addr}${dom}"
 clean "an example.com address" x_test.go 'GIT_AUTHOR_EMAIL=t@example.com'
 clean "a GitHub noreply address" commits 'Author: 1+someone@users.noreply.github.com'
 clean "the co-author trailer" commits 'Co-Authored-By: Claude <noreply@anthropic.com>'
+clean "Dependabot's sign-off" commits 'Signed-off-by: dependabot[bot] <support@github.com>'
 clean "a git@ SSH remote" x_test.go 'git@github.com:o/n.git'
 clean "credentials in a URL" x_test.go 'https://u:p@github.com/o/n and https://x:ghs_T/CD@github.com/o/n'
 clean "a versioned tool, not an address" AGENTS.md 'go run example.com/tool@v2.14.0 and actions/checkout@v7'
@@ -71,6 +77,10 @@ clean "this project's repos" README.md 'https://github.com/kacxx/jotaside and ka
 clean "placeholder repos" x_test.go 'https://github.com/o/n/issues/7, Org/ABC-1#2, ssh://git@github.com:22/kacxx/jotaside'
 clean "a GitHub Action" ci.yml 'uses: actions/checkout@v7'
 clean "an issue number alone" commits 'Part of #54'
+clean "a link to a numbered heading" README.md '[why](docs/decisions.md#12-why)'
+clean "GitHub's own pages" README.md 'https://github.com/settings/tokens and https://github.com/marketplace/actions/x'
+clean "an allowed owner under orgs/ and the API's repos/" README.md 'https://github.com/orgs/kacxx/projects/1 https://api.github.com/repos/kacxx/jotaside'
+hit "a private-looking owner under orgs/" README.md "https://${gh}/orgs${priv}"
 
 echo "deny patterns"
 DENY="some""corp" hit "a line matching a deny pattern" README.md "made at SomeCorp" deny
@@ -90,6 +100,7 @@ echo "tree and diff modes"
 repo=$(mktemp -d)
 trap 'rm -rf "$repo"' EXIT
 git -C "$repo" init -q
+git -C "$repo" config commit.gpgsign false
 git -C "$repo" config user.email t@example.com
 git -C "$repo" config user.name t
 printf 'one\ntwo\n' > "$repo/notes.md"
@@ -112,6 +123,19 @@ printf 'one\ntwo\nfour\n' > "$repo/notes.md"
 git -C "$repo" commit -qam three
 out=$(cd "$repo" && bash "$check" --diff HEAD~1 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then ok "--diff ignores a removed line"; else bad "--diff on a removal: exit $rc: $out"; fi
+mkdir -p "$repo/-Us""ers-jsmith-real-code"
+: > "$repo/-Us""ers-jsmith-real-code/x.md"
+git -C "$repo" add . && git -C "$repo" commit -qm four
+out=$(cd "$repo" && bash "$check" 2>&1); rc=$?
+case $rc:$out in
+  "1:FAIL [path] file names:"*) ok "the tree check reads file names" ;;
+  *) bad "file names: expected a [path] hit, got exit $rc: $out" ;;
+esac
+out=$(cd "$repo" && bash "$check" --diff HEAD~1 2>&1); rc=$?
+case $rc:$out in
+  "1:FAIL [path] file names:"*) ok "  and so does --diff, for an added file" ;;
+  *) bad "--diff file names: expected a [path] hit, got exit $rc: $out" ;;
+esac
 
 printf '\npassed: %d  failed: %d\n' "$pass" "$failures"
 [ "$failures" -eq 0 ]

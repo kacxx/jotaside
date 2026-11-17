@@ -153,6 +153,18 @@ lint; fails "both set different ones" "version differs: .claude-plugin/plugin.js
 printf '{"name": "demo"}\n' > "$P/.claude-plugin/plugin.json"
 lint; passes "marketplace.json sets one, plugin.json doesn't"
 
+echo "a version tag the listing pins matches plugin.json's version"
+plugin refs
+ref() {
+  printf '{"name": "demo", "owner": {"name": "x"}, "plugins": [{"name": "demo", "source": {"source": "github", "repo": "o/n", "ref": "%s"}}]}\n' "$1" > "$P/.claude-plugin/marketplace.json"
+}
+ref v1.0.0
+lint; passes "the same version"
+ref v0.9.0
+lint; fails "a different version" "version differs: .claude-plugin/plugin.json 1.0.0, .claude-plugin/marketplace.json source.ref v0.9.0"
+ref main
+lint; passes "a branch, not a version tag, isn't compared"
+
 echo "manifests"
 plugin manifests
 printf '{"name": ' > "$P/.claude-plugin/plugin.json"
