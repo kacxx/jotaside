@@ -4,9 +4,18 @@ on:
   push:
     branches: [main]
   pull_request:
+  # Release PRs are opened with the default token, which starts no workflows,
+  # so CI is run on them by hand: gh workflow run CI --ref <release branch>
+  workflow_dispatch:
 
 permissions:
   contents: read
+
+# One run per PR branch: a new push cancels the PR's run in progress. Pushes to
+# main and manual runs each get their own group (run_id), so none is cancelled.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   test:
@@ -24,19 +33,6 @@ jobs:
         with:
           go-version-file: go.mod
           cache: true
-
-      # Windows checkouts may use CRLF, which gofmt reports; formatting is
-      # platform-independent, so check it once.
-      - name: Check formatting
-        if: runner.os == 'Linux'
-        shell: bash
-        run: |
-          unformatted="$(gofmt -l .)"
-          if [[ -n "$unformatted" ]]; then
-            echo "The following files need gofmt:"
-            echo "$unformatted"
-            exit 1
-          fi
 
       - name: Vet
         run: go vet ./...
@@ -99,8 +95,20 @@ jobs:
           cache: true
 
       # Config in .golangci.yml. Pinned so a new linter release can't turn CI
-      # red on its own; bump deliberately.
-      - name: golangci-lint
+      # red on its own; bump it here and in scripts/check.sh together.
+      - name: Install golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
           version: v2.14.0
+          install-only: true
+
+      - name: Install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+
+      # gofmt, golangci-lint, shellcheck and the plugin manifest lint, as
+      # locally. CI=true, so a missing linter fails rather than being skipped.
+      - name: Lint (scripts/check.sh --lint-only)
+        run: bash scripts/check.sh --lint-only
+
+      - name: Manifest lint tests
+        run: bash ci/__tests__/lint-skills.test.sh

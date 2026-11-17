@@ -1,0 +1,64 @@
+name: Genericity
+
+# Keeps machine paths, email addresses, private repo names and anything the
+# GENERICITY_DENY_PATTERNS secret lists out of this public repo: the tree, and
+# on a PR its added lines, title, body, commit messages and branch name. Not a
+# required check. A hit names the rule, file and line, never the text.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    # edited: a changed title or body is checked again.
+    types: [opened, synchronize, reopened, edited]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Newline-separated extended regexes; empty on PRs from forks, which get no
+  # secrets, so only the built-in rules run there.
+  GENERICITY_DENY_PATTERNS: ${{ secrets.GENERICITY_DENY_PATTERNS }}
+
+jobs:
+  genericity:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+        with:
+          # The PR's own head, not the merge commit, so the commit range and
+          # the diff below are exactly the PR's.
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Self-test
+        run: bash scripts/genericity-check.test.sh
+
+      - name: Tree
+        run: bash scripts/genericity-check.sh
+
+      - name: PR diff
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+        run: bash scripts/genericity-check.sh --diff "$BASE"
+
+      - name: PR title, body, commit messages and branch name
+        if: github.event_name == 'pull_request'
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          TITLE: ${{ github.event.pull_request.title }}
+          BODY: ${{ github.event.pull_request.body }}
+          BRANCH: ${{ github.head_ref }}
+        run: |
+          rc=0
+          printf '%s\n' "$TITLE" | bash scripts/genericity-check.sh --stdin "PR title" || rc=1
+          printf '%s\n' "$BODY" | bash scripts/genericity-check.sh --stdin "PR body" || rc=1
+          git log --format='%B' "$BASE..HEAD" | bash scripts/genericity-check.sh --stdin "commit messages" || rc=1
+          printf '%s\n' "$BRANCH" | bash scripts/genericity-check.sh --stdin "branch name" || rc=1
+          exit "$rc"

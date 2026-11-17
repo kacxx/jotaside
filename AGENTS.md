@@ -54,16 +54,41 @@ fact below before touching names.
 ## Commands
 
 ```sh
-gofmt -l .                 # must print nothing
-go vet ./...
-go test -race ./...
-go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0 run  # the version CI pins; a v1 install can't read the v2 .golangci.yml
+bash scripts/check.sh      # the checks CI runs: linters, then tests (run before every push)
+bash scripts/check.sh --lint-only  # linters only, as CI's lint job
 bash test/e2e/run.sh       # end-to-end, throwaway database
 bash test/release/smoke.sh  # install the latest release (TAG=vX.Y.Z for another) as a new user would
 bash scripts/third-party-notices.sh  # after changing dependencies: regenerate THIRD_PARTY_NOTICES (CI checks it)
+bash scripts/genericity-check.sh     # the genericity check on the tree (see below)
 ```
 
-CI runs all of these on Linux. The release smoke test runs after each release
+`scripts/check.sh` runs gofmt, golangci-lint v2.14.0 (through
+`go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@v2.14.0` unless
+that version is on `PATH`; a v1 install can't read the v2 `.golangci.yml`),
+`shellcheck --severity=warning` on tracked `*.sh` (settings in
+`.shellcheckrc`) and the plugin manifest lint (`ci/lint-skills.sh`), then
+`go vet ./...`, `go test -race ./...`, the notices check and the two scripts'
+self-tests. A linter failure stops it before the tests unless `CI=true`. A
+missing shellcheck or jq is a warning locally and a failure in CI. With
+`claude` on `PATH`, the manifest lint also runs `claude plugin validate .`.
+
+CI (`ci.yml`) runs `test` on Ubuntu and Windows, `e2e`, `notices`, and `lint`,
+which is `scripts/check.sh --lint-only` plus the manifest lint's tests.
+Release-please opens its release PR with the default token, which starts no
+workflows, so run CI on it by hand before merging:
+`gh workflow run CI --ref <release branch>` (the checks then show on the PR).
+
+**Genericity check.** This repo is public. `genericity.yml` runs
+`scripts/genericity-check.sh` on the tree and, on a PR, on its added lines,
+title, body, commit messages and branch name. It fails on a machine-specific
+home path, an email address, a GitHub `owner/repo` outside its allowlist
+(Go modules in `go.mod`/`go.sum` are allowed), or a match for the
+`GENERICITY_DENY_PATTERNS` repository secret, and prints only the rule, file
+and line. It isn't a required check. Run it on text before posting it:
+`printf '%s\n' "$text" | bash scripts/genericity-check.sh --stdin comment`.
+Its rules and allowlists are at the top of the script.
+
+The release smoke test runs after each release
 on macOS, Linux and Windows (`release-smoke.yml`). There it installs into the
 default locations (`~/.claude`, `~/.codex`, the OS data folder), since the
 runner is a new machine. Run locally, it redirects the configs and database

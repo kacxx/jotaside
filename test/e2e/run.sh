@@ -60,7 +60,7 @@ fi
 
 hr "2b. jotaside setup against a throwaway home (never your real config)"
 SHOME="$TMP/home"; mkdir -p "$SHOME/.claude" "$SHOME/.codex"
-setup() { HOME="$SHOME" USERPROFILE="$SHOME" CLAUDE_CONFIG_DIR= CODEX_HOME= "$BIN" setup "$@" 2>&1; }
+setup() { HOME="$SHOME" USERPROFILE="$SHOME" CLAUDE_CONFIG_DIR='' CODEX_HOME='' "$BIN" setup "$@" 2>&1; }
 CSET="$SHOME/.claude/settings.json"
 # Other settings, another hook and hooks under the old names (jot, aside), to
 # be merged into.
@@ -102,7 +102,7 @@ if [ -n "$ID" ]; then
   [ "$("$BIN" check "$ID")" = "✓ #$ID checked" ] && ok "check #$ID" || bad "check"
   "$BIN" inbox | grep "e2e note" | grep -qE '  \(checked today\)$' && ok "inbox marks it (checked today)" || bad "inbox missing the checked marker"
   "$BIN" show "$ID" | grep -qE '^checked: ' && ok "show prints checked:" || bad "show missing checked:"
-  "$BIN" done "$ID" >/dev/null && ok "done #$ID" || bad "done"
+  "$BIN" "done" "$ID" >/dev/null && ok "done #$ID" || bad "done"
 else
   bad "could not parse a jot id from inbox"
 fi

@@ -16,7 +16,7 @@ repo=$(cd "$(dirname "$0")/../.." && pwd)
 work=/tmp/jotaside-demo
 here="$repo/docs/demo"
 
-rm -rf "$work/api" "$work/bin" "$work"/demo.*
+rm -rf "${work:?}/api" "${work:?}/bin" "${work:?}"/demo.*
 mkdir -p "$work/api" "$work/bin"
 (cd "$repo" && go build -o "$work/bin/jotaside" ./cmd/jotaside)
 

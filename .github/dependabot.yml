@@ -1,0 +1,30 @@
+# Weekly update PRs for the Actions the workflows use and the Go modules the
+# binary builds from, each kind grouped into one PR.
+#
+# A Go module update changes THIRD_PARTY_NOTICES, so its PR fails the notices
+# check until `bash scripts/third-party-notices.sh` is run on its branch.
+# The PRs are titled chore(deps), which release-please doesn't release; retitle
+# one fix(deps) before squashing if the update should ship in a release.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      actions:
+        patterns: ["*"]
+
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: chore
+      include: scope
+    groups:
+      go-modules:
+        patterns: ["*"]
