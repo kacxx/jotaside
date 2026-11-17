@@ -1,0 +1,7 @@
+# shellcheck settings for this repo's scripts, read by scripts/check.sh and by
+# editors. scripts/check.sh passes --severity=warning, so only warnings and
+# errors fail it; editors still show the style notes.
+
+# Follow a `source` to a file the script names, relative to the script.
+external-sources=true
+source-path=SCRIPTDIR
