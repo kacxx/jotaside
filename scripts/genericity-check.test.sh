@@ -48,6 +48,8 @@ clean "a placeholder with a space" x_test.go '"/Users/John Smith/go/bin/jotaside
 hit "a home folder as Claude Code names a project folder" x.json "\"/p/-Us""ers-jsmith-real-code-app/1.jsonl\""
 clean "  with a placeholder name" x.json '"/p/-Users-dev-src-webapp/1.jsonl"'
 clean "  not a flag such as --home-dir" README.md 'run with --home-dir x'
+clean "  nor a heading anchor such as #-home-directory" README.md '[x](#-home-directory)'
+hit "a home folder whose name contains home-" README.md "/ho""me/jsmith-home-dev/x"
 
 echo "email addresses"; rule=email
 hit "a real-looking address" README.md "mail ${addr}${dom} for access"
@@ -81,6 +83,9 @@ clean "a link to a numbered heading" README.md '[why](docs/decisions.md#12-why)'
 clean "GitHub's own pages" README.md 'https://github.com/settings/tokens and https://github.com/marketplace/actions/x'
 clean "an allowed owner under orgs/ and the API's repos/" README.md 'https://github.com/orgs/kacxx/projects/1 https://api.github.com/repos/kacxx/jotaside'
 hit "a private-looking owner under orgs/" README.md "https://${gh}/orgs${priv}"
+hit "a private-looking owner/repo#N one space after an allowed one" commits "Closes kacxx/jotaside#54 ${priv#/}#7"
+hit "  or one comma after" commits "kacxx/jotaside#1,${priv#/}#2"
+clean "  and a numbered anchor beside an allowed ref" README.md 'kacxx/jotaside#54 [why](docs/decisions.md#12-why)'
 
 echo "deny patterns"
 DENY="some""corp" hit "a line matching a deny pattern" README.md "made at SomeCorp" deny

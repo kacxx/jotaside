@@ -57,12 +57,14 @@ github_pages='settings|marketplace|features|topics|notifications|apps|collection
 # OWNER/REPO of every GitHub-hosted Go module the build depends on.
 deps=$(cat go.mod go.sum 2>/dev/null | grep -oE 'github\.com/[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+' | cut -d/ -f2,3 | sort -u | tr '[:upper:]' '[:lower:]')
 
-path_re='/(Users|home)/[A-Za-z][A-Za-z0-9._-]*|[A-Za-z]:\\{1,2}Users\\{1,2}[A-Za-z][A-Za-z0-9._-]*|(^|[^A-Za-z0-9-])-(Users|home)-[A-Za-z][A-Za-z0-9._]*'
+path_re='/(Users|home)/[A-Za-z][A-Za-z0-9._-]*|[A-Za-z]:\\{1,2}Users\\{1,2}[A-Za-z][A-Za-z0-9._-]*|(^|[^A-Za-z0-9#-])-(Users|home)-[A-Za-z][A-Za-z0-9._]*'
 email_re='(^|[^A-Za-z0-9._%+:/-])[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*\.[A-Za-z]{2,}'
 safe_email_re='@([a-z0-9-]+\.)*example\.(com|org|net)$|@users\.noreply\.github\.com$|^(support|noreply)@github\.com$|^noreply@anthropic\.com$|^git@'
 repo_url_re='(https?://|ssh://|[A-Za-z0-9._%+-]+@)?github\.com(:[0-9]+/|[:/])[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+(/[A-Za-z0-9][A-Za-z0-9-]*)?'
-# A numbered anchor (decisions.md#12-why) isn't an issue reference.
-repo_ref_re='(^|[^A-Za-z0-9_./-])[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+#[0-9]+([^A-Za-z0-9_-]|$)'
+repo_ref_re='(^|[^A-Za-z0-9_./-])[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9_.-]+#[0-9]+'
+# A numbered heading's anchor (decisions.md#12-why) isn't an issue reference;
+# the repo rule removes such anchors from a line before matching.
+anchor_sed='s/#[0-9]+[A-Za-z_-][A-Za-z0-9_-]*//g'
 
 hits=0 scanned=0
 hit() { printf 'FAIL [%s] %s:%s\n' "$1" "$2" "$3"; hits=$((hits + 1)); }
@@ -117,7 +119,7 @@ scan() {
   while IFS=: read -r i line; do
     while IFS= read -r m; do
       # The name: the part after Users or home and its separator.
-      m=$(printf '%s' "$m" | sed -E 's/.*(Users|home)[-/\\]+//')
+      m=$(printf '%s' "$m" | sed -E 's/^([A-Za-z]:)?[^A-Za-z]*(Users|home)[-/\\]+//')
       if ! printf '%s\n' "$m" | grep -qixE "$safe_users"; then report path "$i"; break; fi
     done < <(printf '%s\n' "$line" | grep -oE "$path_re")
   done < <(grep -nE "$path_re" "$text")
@@ -135,7 +137,7 @@ scan() {
       while IFS=: read -r i line; do
         while IFS= read -r m; do
           if ! allowed_repo "$file" "$m"; then report repo "$i"; break; fi
-        done < <(printf '%s\n' "$line" | grep -oE "$repo_url_re|$repo_ref_re")
+        done < <(printf '%s\n' "$line" | sed -E "$anchor_sed" | grep -oE "$repo_url_re|$repo_ref_re")
       done < <(grep -nE "$repo_url_re|$repo_ref_re" "$text") ;;
   esac
 
