@@ -106,7 +106,10 @@ def mcp_calls(exe, env, calls):
     for n, (name, args) in enumerate(calls, 1):
         reqs.append({"jsonrpc": "2.0", "id": n, "method": "tools/call",
                      "params": {"name": name, "arguments": args}})
-    out = run([exe, "mcp"], env, "\n".join(json.dumps(r) for r in reqs) + "\n")
+    res = subprocess.run([exe, "mcp"], input="\n".join(json.dumps(r) for r in reqs) + "\n",
+                         capture_output=True, text=True, encoding="utf-8", errors="replace", env=env, check=False)
+    # A server that fails leaves every result None: the page falls back and says so.
+    out = res.stdout if res.returncode == 0 else ""
     by_id = {}
     for line in out.splitlines():
         try:
@@ -148,8 +151,10 @@ def when(t):
 
 
 def age_days(t, today):
-    """Whole calendar days since t, in local time, as jotaside's AgeDays counts them."""
-    return (today - local(t).date()).days if t else None
+    """Whole calendar days since t, in local time, as jotaside's AgeDays counts
+    them. A jot dated after today (a clock ahead) counts as today's, and one
+    whose date didn't parse as None."""
+    return max(0, (today - local(t).date()).days) if t else None
 
 
 def short_path(p):
@@ -192,6 +197,15 @@ def link_html(url):
 
 def first_line(s):
     return (s or "").split("\n", 1)[0]
+
+
+def session_name(text):
+    """The name a `session:` jot (any case) gives its session, as jotaside's
+    sessionName reads it: the first line after the prefix, which may start on
+    the next line. "" if text has no such prefix or names nothing."""
+    if text[:8].lower() != "session:":
+        return ""
+    return text[8:].strip().split("\n", 1)[0].strip()
 
 
 def jot_html(r, today, from_label="", show_place=True):
@@ -253,7 +267,7 @@ def build():
         env["JOT_DB"] = os.path.abspath(args.db)
     source_db = run([exe, "paths"], env).splitlines()
     source_db = next((ln.split(":", 1)[1].strip() for ln in source_db if ln.startswith("db:")), "?")
-    source_db = re.sub(r"\s+\((default|\$?JOT_DB)\)$", "", source_db)  # `jotaside paths` says where it came from
+    source_db = re.sub(r"\s+\((default|\$[A-Z_]+)\)$", "", source_db)  # `jotaside paths` says where it came from
 
     tmp = tempfile.mkdtemp(prefix="jotaside-snapshot-")
     try:
@@ -286,7 +300,13 @@ def build():
         m = mcp_sessions.get(key)
         if m and m.get("label"):
             return m["label"]
-        return first_line(sessions[key][-1]["text"])  # the oldest jot, as jotaside's default label
+        # Past the MCP server's cap: jotaside's rule, as groupSessions applies
+        # it. The newest `session:` jot names the session, else the oldest jot.
+        for r in sessions[key]:  # newest first
+            name = session_name(r["text"])
+            if name:
+                return name
+        return first_line(sessions[key][-1]["text"])
 
     for r in rows:
         key = (r["source"], r["session_id"])
@@ -319,22 +339,23 @@ def build():
 
     notes = []
     if sess_res is None or inbox_res is None:
-        notes.append("The MCP server didn't answer, so session labels fall back to each session's oldest jot, "
-                     "and resume commands and titles are missing.")
+        notes.append("jotaside's MCP server didn't answer, so session labels are worked out here from the jots, "
+                     "and start folders, resume and open commands, and titles are missing.")
     elif len(sessions) > len(mcp_sessions):
-        notes.append(f"The MCP server returns at most {MCP_LIMIT} sessions: {len(sessions) - len(mcp_sessions)} "
-                     "older sessions show their oldest jot as the label and have no resume command.")
+        notes.append(f"The MCP server returns at most {MCP_LIMIT} sessions: the {len(sessions) - len(mcp_sessions)} "
+                     "older ones have labels worked out here from the jots, and no start folder or commands.")
     if len(open_rows) > len(titles) and inbox_res is not None and len(titles) >= MCP_LIMIT:
         notes.append(f"Session titles are shown for the newest {MCP_LIMIT} open jots only.")
     notes_html = "".join(f'<p class="note top">{esc(n)}</p>' for n in notes)
 
     # View 1: the inbox, by age.
+    # A jot whose date didn't parse goes with today's.
+    by_group = [[] for _ in AGE_GROUPS]
+    for r in open_rows:
+        age = age_days(r["created"], today) or 0
+        by_group[max(i for i, g in enumerate(AGE_GROUPS) if age >= g[1])].append(r)
     inbox = []
-    for i, (label, low, cls) in enumerate(AGE_GROUPS):
-        high = AGE_GROUPS[i + 1][1] if i + 1 < len(AGE_GROUPS) else None
-        members = [r for r in open_rows
-                   if (age_days(r["created"], today) or 0) >= low
-                   and (high is None or (age_days(r["created"], today) or 0) < high)]
+    for (label, _, cls), members in zip(AGE_GROUPS, by_group):
         if members:
             lis = "".join(jot_html(r, today, r["session_label"]) for r in members)
             inbox.append(f'<section class="card"><h2><span class="badge {cls}">{esc(label)}</span> '

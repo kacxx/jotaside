@@ -46,9 +46,11 @@ The script doesn't open the jot database itself.
 4. It removes the temp folder.
 
 The MCP server returns at most 200 sessions and 200 open jots per call. Past
-that, the page says so at the top. The older sessions then have their oldest
-jot as their label (jotaside's default when no `session:` jot names one) and
-no commands, and the older open jots have no session title.
+that, the page says so at the top. The older sessions then get their label
+from the script, by jotaside's rule (the newest `session:` jot names the
+session, else its oldest jot), and have no start folder or commands. The older
+open jots have no session title. If the server fails, the page says so and
+falls back the same way for every session.
 
 | Option | What it does |
 |---|---|
@@ -72,9 +74,10 @@ python3 prototypes/snapshot/jotaside-snapshot.py --db "$dir/fixture.db" --out "$
 ## The page is private
 
 It holds the jots' text and the folders they were made in. The script writes
-only that one file and makes no network calls. It writes a new file beside
-the target and moves it into place, so a failed run leaves the old page whole,
-and a symlink at the target is replaced, not followed. On macOS and Linux the
-file is readable by you alone (mode 0600); on Windows it takes its folder's
+only that one file and makes no network calls. It creates a new file beside
+the target with mode 0600 and moves it into place, so a failed run should
+leave the old page whole and replace a symlink at the target rather than
+follow it. On macOS and Linux, mode 0600 means you alone can read it; this
+hasn't been checked there yet. On Windows the file takes its folder's
 permissions. Keep the page on the machine: don't write it into a repo or a
 synced folder.
