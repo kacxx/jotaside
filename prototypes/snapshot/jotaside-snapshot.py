@@ -339,11 +339,13 @@ def build():
 
     notes = []
     if sess_res is None or inbox_res is None:
-        notes.append("jotaside's MCP server didn't answer, so session labels are worked out here from the jots, "
-                     "and start folders, resume and open commands, and titles are missing.")
+        notes.append("jotaside's MCP server didn't answer, so session labels and start folders are worked out here "
+                     "from the jots (a start folder is the first folder jotted in, not read from the transcript), "
+                     "and resume and open commands and titles are missing.")
     elif len(sessions) > len(mcp_sessions):
         notes.append(f"The MCP server returns at most {MCP_LIMIT} sessions: the {len(sessions) - len(mcp_sessions)} "
-                     "older ones have labels worked out here from the jots, and no start folder or commands.")
+                     "older ones have labels and start folders worked out here from the jots (a start folder is the "
+                     "first folder jotted in, not read from the transcript), and no commands.")
     if len(open_rows) > len(titles) and inbox_res is not None and len(titles) >= MCP_LIMIT:
         notes.append(f"Session titles are shown for the newest {MCP_LIMIT} open jots only.")
     notes_html = "".join(f'<p class="note top">{esc(n)}</p>' for n in notes)

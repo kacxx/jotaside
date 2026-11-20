@@ -47,10 +47,13 @@ The script doesn't open the jot database itself.
 
 The MCP server returns at most 200 sessions and 200 open jots per call. Past
 that, the page says so at the top. The older sessions then get their label
-from the script, by jotaside's rule (the newest `session:` jot names the
-session, else its oldest jot), and have no start folder or commands. The older
-open jots have no session title. If the server fails, the page says so and
-falls back the same way for every session.
+and start folder from the script, by jotaside's rules from the jots alone: the
+newest `session:` jot names the session, else its oldest jot, and the start
+folder is the first folder a jot was made in, oldest first. For a Claude Code
+session that can differ from the folder its transcript started in, which the
+server would have read. Those sessions have no commands. The older open jots
+have no session title. If the server fails, the page says so and falls back
+the same way for every session.
 
 | Option | What it does |
 |---|---|
