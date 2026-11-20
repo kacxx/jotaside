@@ -374,7 +374,8 @@ def build():
         repo = m.get("repo") or jots[0]["repo_name"]
         if repo:
             facts.append(esc(repo + (f' @ {m.get("branch") or jots[0]["branch"]}' if (m.get("branch") or jots[0]["branch"]) else "")))
-        start = m.get("cwd") or jots[-1]["cwd"]
+        # groupSessions' rule: the first non-empty folder, oldest jot first.
+        start = m.get("cwd") or next((r["cwd"] for r in reversed(jots) if r["cwd"]), "")
         if start:
             facts.append(f'<span title="{esc(start)}">started in {esc(short_path(start))}</span>')
         title = next((r["title"] for r in jots if r["title"]), "")
