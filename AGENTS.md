@@ -50,6 +50,10 @@ fact below before touching names.
 - `testdata/hooks/<agent>/` — recorded hook payloads used by tests and the
   smoke test.
 - `test/e2e/run.sh` — black-box install and hook flow, run in CI.
+- `prototypes/snapshot/` — a prototype, not part of jotaside: a Python script
+  that writes a read-only page of every jot from a `jotaside backup` copy and
+  the MCP server, for user acceptance testing. No tests, not in CI
+  ([its README](prototypes/snapshot/README.md)).
 
 ## Commands
 
