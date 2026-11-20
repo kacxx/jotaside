@@ -6,3 +6,6 @@ dist/
 
 # local, environment-specific overrides (e.g. corporate proxy CA for the e2e clean room)
 test/e2e/*.pem
+
+# Python bytecode from running the prototypes
+__pycache__/
